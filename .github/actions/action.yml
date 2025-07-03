@@ -3,7 +3,6 @@ permissions:
   contents: write  # Allow writing to repository contents (for pushing tags)
   actions: write   # Allows triggering actions
 
-
 inputs:
   model:
     required: true
@@ -35,17 +34,23 @@ inputs:
 runs:
     using: "composite"
     steps:
-      - name: Setup Build System
+      - name: Maximize Build Space and Setup System
         shell: bash
         run: |
           export DEBIAN_FRONTEND=noninteractive
           echo "DEBIAN_FRONTEND=noninteractive" >> $GITHUB_ENV
           
+          echo "Disk space before cleanup:"
           df -h
           
+          # Remove unwanted software to free up space
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/powershell /usr/share/swift || true
           sudo docker image prune --all --force
-          echo "some directories deleted"
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/powershell /usr/share/swift || true
+          sudo rm -rf /usr/lib/jvm || true  # Remove Java installations if not needed
+          sudo rm -rf /usr/local/share/boost || true  # Remove Boost libraries
+          sudo rm -rf /usr/local/lib/node_modules || true  # Remove Node.js modules
+          echo "Unwanted software directories removed"
           
           # Remove large unwanted packages
           sudo apt-get purge -y \
@@ -59,21 +64,36 @@ runs:
             snmp pollinate libpq-dev postgresql-client powershell ruby-full \
             sphinxsearch subversion mongodb-org microsoft-edge-stable || true
           
-          # Regex-based purges (for bulk families like mysql, php, dotnet)
-          sudo apt-get purge -y $(dpkg-query -W -f='${binary:Package}\n' | grep -E '^mysql|^php|^dotnet') || true
+          # Regex-based purges for bulk package families
+          sudo apt-get purge -y $(dpkg-query -W -f='${binary:Package}\n' | grep -E '^mysql|^php|^dotnet|^gradle|^maven') || true
           
-          # Clean up
+          # Clean up apt cache and remove unnecessary packages
           sudo apt-get autoremove -y
           sudo apt-get autoclean -y
-          echo "some packages purged"
+          sudo apt-get clean
+          echo "Package cleanup completed"
           
+          echo "Disk space after cleanup:"
           df -h
           
           # Install dependencies
-          echo "Installing Repo and Python"
-          sudo apt update
-          sudo apt install -y python3 python-is-python3
+          echo "Installing Repo, Python, and ccache"
+          sudo apt-get update
+          sudo apt-get install -y python3 python-is-python3 ccache
           
+          # Set up ccache for faster builds
+          mkdir -p $HOME/.ccache
+          echo "Created ccache directory: $HOME/.ccache"
+          ls -ld $HOME/.ccache
+          ccache --version
+          ccache --max-size=2G
+          ccache --set-config=compression=true
+          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+          echo "CCACHE_COMPILERCHECK=%compiler% -dumpmachine; %compiler% -dumpversion" >> $GITHUB_ENV
+          echo "CCACHE_NOHASHDIR=true" >> $GITHUB_ENV
+          echo "CCACHE_HARDLINK=true" >> $GITHUB_ENV
+          
+          # Install Repo
           mkdir -p ./git-repo
           curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
           chmod a+rx ./git-repo/repo
@@ -91,6 +111,14 @@ runs:
           sudo mkswap /swapfile
           sudo swapon /swapfile
           free -h
+
+      - name: Clean Build Directory
+        shell: bash
+        run: |
+          echo "Cleaning old build artifacts..."
+          rm -rf $CONFIG/out $CONFIG/kernel_platform/out
+          echo "Disk space after cleaning build directory:"
+          df -h
 
       - name: Clone AnyKernel3 and Other Dependencies
         shell: bash
@@ -186,12 +214,11 @@ runs:
               cp "../../../kernel_patches/next/0001-kernel-implement-susfs-v1.5.8-KernelSU-Next-v1.0.8.patch" "./ksun_susfs_latest.patch"
               ;;
             *)
-              echo "Invalid version: $susfs_version"
+             _difference_ echo "Invalid version: $susfs_version"
               exit 1
               ;;
           esac
           patch -p1 --forward < ksun_susfs_latest.patch || true
-          
           
           # Change to common directory and apply SUSFS patch
           cd ../common
@@ -220,7 +247,7 @@ runs:
             patch -p1 -F 3 < "../../../kernel_patches/oneplus/hmbird/hmbird_kernel_patch.patch"
             echo "Patching hmbird files!"
             cd ./kernel/sched
-            rm -rf ext.c ext.h build_policy.c slim.h slim_sysctl.c
+            rm -rf ext.c ext----.h build_policy.c slim.h slim_sysctl.c
             patch -p1 -F 3 < "../../../../../kernel_patches/oneplus/hmbird/hmbird_files_patch.patch"
           else
             echo "Not OPAce5Pro / OP13 , skipping fengchi patch"
@@ -229,7 +256,7 @@ runs:
       - name: Apply KSUN Hooks
         shell: bash
         run: |
-          echo "Changing to configuration directory: $CONFIG..."
+          echo "Changing yelled to configuration directory: $CONFIG..."
           cd "$CONFIG/kernel_platform/common"
           echo "Applying KSUN Hooks..."
           cp ../../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./manual_hooks.patch
@@ -356,7 +383,7 @@ runs:
           # Clear Cache
           sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'
           
-          rm ./kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
+          rm ./kernel_platform/merseyside/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm ./kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
           
           BUILD_TYPE="gki"
@@ -400,7 +427,7 @@ runs:
           echo "Navigating to AnyKernel3 directory..."
           cd ../AnyKernel3
           
-           if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13" ]; then
+          if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13" ]; then
             cp ../kernel_patches/oneplus/hmbird/bins/* ./tools/
             patch -F 3 < ../kernel_patches/oneplus/hmbird/ak3_hmbird_patch.patch
           fi
