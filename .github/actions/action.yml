@@ -312,9 +312,9 @@ runs:
           
           echo "Running sed commands..."
           
-          sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' "./common/arch/arm64/configs/gki_defconfig"
-          sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_FULL=y/' "./common/arch/arm64/configs/gki_defconfig"
-          sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_FULL=y/' "./common/arch/arm64/configs/gki_defconfig"
+          sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' "./common/arch/arm64/configs/gki_defconfig"
+          sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=n/' "./common/arch/arm64/configs/gki_defconfig"
+          sed -i 's/CONFIG_LTO_CLANG_NONE=n/CONFIG_LTO_CLANG_THIN=n/' "./common/arch/arm64/configs/gki_defconfig"
           
           # Run sed commands for modifications
           sed -i 's/check_defconfig//' ./common/build.config.gki
@@ -342,7 +342,7 @@ runs:
           DATESTR=$(date -u)
           perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./common/scripts/mkcompile_h
           perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./msm-kernel/scripts/mkcompile_h
-
+          
       - name: Build the Kernel
         shell: bash
         run: |
