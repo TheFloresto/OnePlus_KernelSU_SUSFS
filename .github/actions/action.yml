@@ -214,7 +214,7 @@ runs:
               cp "../../../kernel_patches/next/0001-kernel-implement-susfs-v1.5.8-KernelSU-Next-v1.0.8.patch" "./ksun_susfs_latest.patch"
               ;;
             *)
-             _difference_ echo "Invalid version: $susfs_version"
+              echo "Invalid version: $susfs_version"
               exit 1
               ;;
           esac
@@ -244,19 +244,21 @@ runs:
           if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13" ]; then
             echo "Patching hmbird!"
             echo 'obj-y += hmbird_patch.o' >> ./drivers/Makefile
-            patch -p1 -F 3 < "../../../kernel_patches/oneplus/hmbird/hmbird_kernel_patch.patch"
+            patch -p1 -F 3 < "../../../kernel_patches/oneplus/hmbird/hmbird_kernel_patch.patch" || { echo "Failed to apply hmbird_kernel_patch.patch"; exit 1; }
             echo "Patching hmbird files!"
             cd ./kernel/sched
-            rm -rf ext.c ext----.h build_policy.c slim.h slim_sysctl.c
-            patch -p1 -F 3 < "../../../../../kernel_patches/oneplus/hmbird/hmbird_files_patch.patch"
+            # Remove existing files to avoid conflicts
+            rm -f ext.c ext.h build_policy.c slim.h slim_sysctl.c hmbird_sched_proc.h hmbird_sched_proc_main.c
+            # Apply patch with force to handle existing files
+            patch -p1 -F 3 --force < "../../../../../kernel_patches/oneplus/hmbird/hmbird_files_patch.patch" || { echo "Failed to apply hmbird_files_patch.patch"; exit 1; }
           else
-            echo "Not OPAce5Pro / OP13 , skipping fengchi patch"
+            echo "Not OPAce5Pro / OP13, skipping hmbird patch"
           fi
 
       - name: Apply KSUN Hooks
         shell: bash
         run: |
-          echo "Changing yelled to configuration directory: $CONFIG..."
+          echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG/kernel_platform/common"
           echo "Applying KSUN Hooks..."
           cp ../../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./manual_hooks.patch
@@ -383,7 +385,7 @@ runs:
           # Clear Cache
           sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'
           
-          rm ./kernel_platform/merseyside/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
+          rm ./kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm ./kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
           
           BUILD_TYPE="gki"
