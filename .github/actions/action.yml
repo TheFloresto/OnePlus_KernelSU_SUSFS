@@ -146,7 +146,7 @@ runs:
           if [ "${{ inputs.ksun_branch }}" == "stable" ]; then
             curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -
           else
-            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s ${{ inputs.ksun_branch }}
+            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s "${{ inputs.ksun_branch }}"
           fi
 
       - name: Apply SUSFS Patches
@@ -167,7 +167,14 @@ runs:
           susfs_version=$(grep '#define SUSFS_VERSION' ../common/include/linux/susfs.h | awk -F'"' '{print $2}')
           echo "SUSVER=$susfs_version" >> $GITHUB_ENV
           BASE_VERSION=10200
-          KSU_VERSION=$(expr $(curl -sI "https://api.github.com/repos/KernelSU-Next/KernelSU-Next/commits?sha=${{ inputs.ksun_branch }}&per_page=1" | grep -i "link:" | sed -n 's/.*page=\([0-9]*\)>; rel="last".*/\1/p') "+" $BASE_VERSION)
+          
+          # Fetch commit count with error handling
+          COMMIT_COUNT=$(curl -sI "https://api.github.com/repos/KernelSU-Next/KernelSU-Next/commits?sha=${{ inputs.ksun_branch }}&per_page=1" | grep -i "link:" | sed -n 's/.*page=\([0-9]*\)>; rel="last".*/\1/p')
+          if [ -z "$COMMIT_COUNT" ]; then
+            echo "Warning: Could not fetch commit count, defaulting to 0"
+            COMMIT_COUNT=0
+          fi
+          KSU_VERSION=$(expr $COMMIT_COUNT + $BASE_VERSION)
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
           echo "KernelSU Next Version: $KSU_VERSION"
           echo "SusFS Version: $susfs_version"
@@ -175,25 +182,25 @@ runs:
           case "$susfs_version" in
             "v1.5.5"|"v1.5.6"|"v1.5.7")
               cp "../../../kernel_patches/next/0001-kernel-implement-susfs-v1.5.5-v1.5.7-KSUN-v1.0.8.patch" "./ksun_susfs_latest.patch"
+              patch -p1 --forward < ksun_susfs_latest.patch || true
               ;;
             "v1.5.8")
               cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
               patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || true
               cp ../../../kernel_patches/next/susfs_fix_patches/v1.5.8/fix_apk_sign.c.patch ./
-              patch -p1 --forward --fuzz=3 < fix_apk_sign.c.patch
+              patch -p1 --forward --fuzz=3 < fix_apk_sign.c.patch || true
               cp ../../../kernel_patches/next/susfs_fix_patches/v1.5.8/fix_core_hook.c.patch ./
-              patch -p1 --forward --fuzz=3 < fix_core_hook.c.patch
+              patch -p1 --forward --fuzz=3 < fix_core_hook.c.patch || true
               cp ../../../kernel_patches/next/susfs_fix_patches/v1.5.8/fix_selinux.c.patch ./
-              patch -p1 --forward --fuzz=3 < fix_selinux.c.patch
+              patch -p1 --forward --fuzz=3 < fix_selinux.c.patch || true
               cp ../../../kernel_patches/next/susfs_fix_patches/v1.5.8/fix_ksud.c.patch ./
-              patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
+              patch -p1 --forward --fuzz=3 < fix_ksud.c.patch || true
               ;;
             *)
               echo "Invalid version: $susfs_version"
               exit 1
               ;;
           esac
-          patch -p1 --forward < ksun_susfs_latest.patch || true
           
           cd ../common
           if [ "${{ inputs.android_version }}" = "android15" ] && [ "${{ inputs.kernel_version }}" = "6.6" ]; then
@@ -210,7 +217,7 @@ runs:
           
           if [ "$(printf '%s\n' "$KERNEL_VERSION" "$MIN_VERSION" | sort -V | head -n1)" = "$KERNEL_VERSION" ]; then
             echo "Patching ptrace!"
-            patch -p1 -F 3 < "../../../kernel_patches/gki_ptrace.patch"
+            patch -p1 -F 3 < "../../../kernel_patches/gki_ptrace.patch" || true
           else
             echo "Kernel >= $MIN_VERSION, skipping ptrace patch"
           fi
@@ -218,13 +225,13 @@ runs:
           if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13" ]; then
             echo "Patching hmbird!"
             echo 'obj-y += hmbird_patch.o' >> ./drivers/Makefile
-            patch -p1 -F 3 < "../../../kernel_patches/oneplus/hmbird/hmbird_kernel_patch.patch DDo4
+            patch -p1 -F 3 < "../../../kernel_patches/oneplus/hmbird/hmbird_kernel_patch.patch" || true
             echo "Patching hmbird files!"
             cd ./kernel/sched
             rm -rf ext.c ext.h build_policy.c slim.h slim_sysctl.c
-            patch -p1 -F 3 < "../../../../../kernel_patches/oneplus/hmbird/hmbird_files_patch.patch"
+            patch -p1 -F 3 < "../../../../../kernel_patches/oneplus/hmbird/hmbird_files_patch.patch" || true
           else
-            echo "Not OPAce5Pro / OP13 , skipping fengchi patch"
+            echo "Not OPAce5Pro / OP13, skipping fengchi patch"
           fi
 
       - name: Apply KSUN Hooks
@@ -234,7 +241,7 @@ runs:
           cd "$CONFIG/kernel_platform/common"
           echo "Applying KSUN Hooks..."
           cp ../../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./manual_hooks.patch
-          patch -p1 --fuzz=3 < ./manual_hooks.patch
+          patch -p1 --fuzz=3 < ./manual_hooks.patch || true
 
       - name: Apply Hide Stuff Patches
         shell: bash
@@ -242,7 +249,7 @@ runs:
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG/kernel_platform/common"
           cp ../../../kernel_patches/69_hide_stuff.patch ./
-          patch -p1 -F 3 < 69_hide_stuff.patch
+          patch -p1 -F 3 < 69_hide_stuff.patch || true
 
       - name: Add KernelSU-Next and SUSFS Configuration Settings
         shell: bash
@@ -272,7 +279,7 @@ runs:
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
           
-          echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64 configs/gki_defconfig
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
 
       - name: Add BBR Support
@@ -325,18 +332,19 @@ runs:
           chmod +x ./common/scripts/setlocalversion
           chmod +x ./msm-kernel/scripts/setlocalversion
           chmod +x ./external/dtc/scripts/setlocalversion
-          sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl || echo "No stamp.bzl!"
+          sed -i 's/-maybe-dirty//' ./build/kernel/kleaf/impl/stamp.bzl || echo "No stamp.bzl!"
           sed -i 's/-dirty//' ./common/scripts/setlocalversion
           sed -i 's/-dirty//' ./msm-kernel/scripts/setlocalversion
           sed -i 's/-dirty//' ./external/dtc/scripts/setlocalversion
           sed -i 's/-dirty//' ./build/kernel/kleaf/workspace_status_stamp.py || echo "No workspace_status_stamp.py!"
           
           sed -i '/echo "LTO $LTO "/i export LTO=full' ./oplus/build/oplus_setup.sh
-          sed -i 's/export REPACK_IMG=true/export REPACK_IMG=false/g' ./oplus/build/oplus_setup.sh
+          sed -i 's/export REPACK_IMG=true/export REPACK_IMG=false/' ./oplus/build/oplus_setup.sh
           
           DATESTR=$(date -u)
-          perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./common/scripts/mkcompile_h
-          perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./msm-kernel/scripts/mkcompile_h
+          echo "DATESTR=$DATESTR"
+          perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT '"$DATESTR"'"}' ./common/scripts/mkcompile_h
+          perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT '"$DATESTR"'"}' ./msm-kernel/scripts/mkcompile_h
 
       - name: Build the Kernel
         shell: bash
@@ -373,10 +381,10 @@ runs:
           trap "kill $MONITOR_PID" EXIT
           
           if [ -f ./kernel_platform/build_with_bazel.py ]; then
-            ./kernel_platform/oplus/bazel/oplus_modules_variant.sh ${{ inputs.soc }} "$BUILD_TYPE" ""
-            ./kernel_platform/build_with_bazel.py -t ${{ inputs.soc }} $BUILD_TYPE "${BAZEL_ARGS[@]}" -o "$(pwd)/out"
+            ./kernel_platform/oplus/bazel/oplus_modules_variant.sh "${{ inputs.soc }}" "$BUILD_TYPE" ""
+            ./kernel_platform/build_with_bazel.py -t "${{ inputs.soc }}" "$BUILD_TYPE" "${BAZEL_ARGS[@]}" -o "$(pwd)/out"
           else
-            LTO=full ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ inputs.soc }} "$BUILD_TYPE"
+            LTO=full ./kernel_platform/oplus/build/oplus_build_kernel.sh "${{ inputs.soc }}" "$BUILD_TYPE"
           fi
           ccache --show-stats
 
@@ -394,7 +402,7 @@ runs:
           
           if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13" ]; then
             cp ../kernel_patches/oneplus/hmbird/bins/* ./tools/
-            patch -F 3 < ../kernel_patches/oneplus/hmbird/ak3_hmbird_patch.patch
+            patch -F 3 < ../kernel_patches/oneplus/hmbird/ak3_hmbird_patch.patch || true
           fi
           
           ZIP_NAME="AnyKernel3_${{ inputs.model }}_${{ inputs.android_version }}-${{ inputs.kernel_version }}_Next_${{ env.KSUVER }}_SUSFS_${{ env.SUSVER }}.zip"
