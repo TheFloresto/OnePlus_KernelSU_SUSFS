@@ -1,4 +1,4 @@
-name: Build LineageOS OnePlus sm6375 Kernel
+name: Build LineageOS sm6375 Kernel
 
 permissions:
   contents: write
@@ -37,22 +37,22 @@ jobs:
           if [[ -z "$SUSFS_BRANCH" ]]; then
             SUSFS_BRANCH="gki-android14-5.15"
           fi
-          echo "susfs_branch=$SUSFS_BRANCH" >> $GITHUB_OUTPUT
+          echo "SusFS_BRANCH=$SUSFS_BRANCH" >> $GITHUB_ENV
 
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Build Kernel
-        uses: ./.github/actions/
+        uses: ./.github/actions/build-kernel
         with:
-          model: OP-Nord-CE3-Lite
-          soc: bengal
-          branch: lineage-21
-          manifest: default.xml
-          android_version: android14
-          kernel_version: '5.15'
-          ksun_branch: ${{ inputs.ksun_branch }}
-          susfs_branch: ${{ steps.get-susfs-branch.outputs.susfs_branch }}
+        model: OP-Nord-CE3-Lite
+        soc: bengal
+        branch: lineage-21
+        manifest: default.xml
+        android_version: android14
+        kernel_version: '5.15'
+        ksun_branch: ${{ inputs.ksun_branch }}
+        susfs_branch: ${{ env.SUSFS_BRANCH }}
 
   trigger-release:
     needs: build-kernel
@@ -62,9 +62,9 @@ jobs:
       REPO_OWNER: ${{ github.repository_owner }}
       REPO_NAME: ${{ github.event.repository.name }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      RELEASE_NAME: '*TEST BUILD* LineageOS sm6375 Kernel With KernelSU Next & SUSFS v1.5.9 *TEST BUILD*'
+      RELEASE_NAME: '*TEST BUILD* LineageOS sm6375 Kernel with KernelSU Next & SUSFS v1.5.8 *TEST BUILD*'
       RELEASE_NOTES: |
-        This release contains KernelSU Next and SUSFS v1.5.9 for LineageOS OnePlus sm6375 kernel.
+        This release contains KernelSU Next and SUSFS v1.5.8 for LineageOS OnePlus sm6375 kernel.
 
         Module:
         -> https://github.com/sidex15/ksu_module_susfs
@@ -74,7 +74,7 @@ jobs:
 
         Features:
         [+] KernelSU-Next
-        [+] SUSFS v1.5.9
+        [+] SUSFS v1.5.8
         [+] Wireguard Support
         [+] Maphide LineageOS Detections
         [+] Futile Maphide for jit-zygote-cache Detections
@@ -85,21 +85,21 @@ jobs:
         [+] BBR v1 Support
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Generate and Create New Tag
         run: |
-          BASE_TAG="v1.5.9-r0"
+          BASE_TAG="v1.5.8-r0"
           LATEST_TAG=$(gh api repos/$REPO_OWNER/$REPO_NAME/tags --jq '.[0].name')
-          if [ -z "$LATEST_TAG" ]; then
+          if [[ -z "$LATEST_TAG" ]]; then
             LATEST_TAG="$BASE_TAG"
           else
             LATEST_TAG=$(printf "%s\n%s\n" "$LATEST_TAG" "$BASE_TAG" | sort -rV | head -n1)
           fi
           NEW_TAG=$(echo "$LATEST_TAG" | awk -F'-r' '{suffix=$2; if (!suffix) suffix=0; suffix++; printf "%s-r%d", $1, suffix}')
           echo "New tag: $NEW_TAG"
-          echo "NEW_TAG=${NEW_TAG}" >> $GITHUB_ENV
+          echo "NEW_TAG=$NEW_TAG" >> $GITHUB_ENV
           git tag $NEW_TAG
           git push origin $NEW_TAG
 
@@ -113,15 +113,15 @@ jobs:
         with:
           tag_name: ${{ env.NEW_TAG }}
           prerelease: true
-          release_name: ${{ env.RELEASE_NAME }}
+          release_name: "${{ env.RELEASE_NAME }}"
           body: ${{ env.RELEASE_NOTES }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Release Assets
+      - name: Upload Release Assets Dynamically
         run: |
           for file in ./downloaded-artifacts/kernel-*/*; do
-            if [ -d "$file" ]; then
+            if [[ -d "$file" ]]; then
               continue
             fi
             echo "Uploading $file..."
@@ -134,4 +134,4 @@ jobs:
       - name: Display Files Uploaded
         run: |
           echo "GitHub release created with the following files:"
-          ls ./downloaded-artifacts/**/*
+          ls ./downloaded-artifacts/*/*
