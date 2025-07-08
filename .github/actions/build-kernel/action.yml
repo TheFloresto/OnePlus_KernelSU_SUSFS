@@ -1,4 +1,4 @@
-name: Build LineageOS sm6375 Kernel
+name: Builds LineageOS sm6375 Kernel
 permissions:
   contents: write
   actions: write
@@ -91,7 +91,7 @@ runs:
         echo "Using branch for AnyKernel3: $ANYKERNEL_BRANCH"
         echo "Using branch for SUSFS: $SUSFS_BRANCH"
 
-        git clone https://github.com/TheWildJames/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
+        git clone https://github.com/TheWildJames/AnyKernel3.git -b "$ANYKERNEL Branch"
         git clone https://github.com/TheWildJames/kernel_patches.git
         git clone https://gitlab.com/simonpunk/susfs4ksu.git
         cd susfs4ksu || exit 1
@@ -250,7 +250,6 @@ runs:
 
         echo "Adding BBR configuration..."
         echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./arch/arm64/configs/lineageos_sm6375_defconfig
-        echo "CONFIG_TCP_CONG_BBR=y" >> ./arch/arm64/configs/lineageos_sm6375_defconfig
         echo "CONFIG_TCP_CONG_BIC=n" >> ./arch/arm64/configs/lineageos_sm6375_defconfig
         echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./arch/arm64/configs/lineageos_sm6375_defconfig
         echo "CONFIG_TCP_CONG_HTCP=n" >> ./arch/arm64/configs/lineageos_sm6375_defconfig
