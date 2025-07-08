@@ -37,22 +37,27 @@ jobs:
           if [[ -z "$SUSFS_BRANCH" ]]; then
             SUSFS_BRANCH="gki-android14-5.15"
           fi
-          echo "SusFS_BRANCH=$SUSFS_BRANCH" >> $GITHUB_ENV
+          echo "susfs_branch=$SUSFS_BRANCH" >> $GITHUB_ENV
 
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Debug Directory Contents
+        run: |
+          ls -R .github/
+          cat .github/actions/build-kernel/action.yml || echo "action.yml not found"
+
       - name: Build Kernel
         uses: ./.github/actions/build-kernel
         with:
-        model: OP-Nord-CE3-Lite
-        soc: bengal
-        branch: lineage-21
-        manifest: default.xml
-        android_version: android14
-        kernel_version: '5.15'
-        ksun_branch: ${{ inputs.ksun_branch }}
-        susfs_branch: ${{ env.SUSFS_BRANCH }}
+          model: OP-Nord-CE3-Lite
+          soc: bengal
+          branch: lineage-21
+          manifest: default.xml
+          android_version: android14
+          kernel_version: '5.15'
+          ksun_branch: ${{ inputs.ksun_branch }}
+          susfs_branch: ${{ env.susfs_branch }}
 
   trigger-release:
     needs: build-kernel
@@ -85,7 +90,7 @@ jobs:
         [+] BBR v1 Support
 
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Generate and Create New Tag
@@ -113,7 +118,7 @@ jobs:
         with:
           tag_name: ${{ env.NEW_TAG }}
           prerelease: true
-          release_name: "${{ env.RELEASE_NAME }}"
+          release_name: ${{ env.RELEASE_NAME }}
           body: ${{ env.RELEASE_NOTES }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
