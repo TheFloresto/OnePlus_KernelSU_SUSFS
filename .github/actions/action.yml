@@ -211,8 +211,8 @@ runs:
       run: |
         echo "Changing to configuration directory: $CONFIG..."
         cd "$CONFIG/kernel_platform/kernel"
-        cp ../../../kernel_patches/69_hide.patch ./
-        patch -p1 -F 3 < 69_hide.patch
+        cp ../../../kernel_patches/69_hide_stuff.patch ./
+        patch -p1 -F 3 < 69_hide_stuff.patch
 
     - name: Add KernelSU-Next and SUSFS Configuration
       shell: bash
@@ -228,7 +228,7 @@ runs:
         echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./arch/arm64/configs/lineageos_sm6375_defconfig
         echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./arch/arm64/configs/lineageos_sm6375_defconfig
         echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> ./arch/arm64/configs/lineageos_sm6375_defconfig
-        echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUSFS_BIND_MOUNT=y" >> ./arch/arm64/configs/lineageos_sm6375_defconfig
+        echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> ./arch/arm64/configs/lineageos_sm6375_defconfig
         echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./arch/arm64/configs/lineageos_sm6375_defconfig
         echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> ./arch/arm64/configs/lineageos_sm6375_defconfig
         echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> ./arch/arm64/configs/lineageos_sm6375_defconfig
@@ -275,18 +275,18 @@ runs:
         cd "$CONFIG/kernel_platform"
 
         echo "Running sed modifications..."
-        sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' ./kernel/arch/arm64/configs/generic_kconfig.yaml
-        sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' ./kernel/arch/arm64/configs/generic_kconfig.yaml
-        sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' ./kernel/arch/arm64/configs/generic_kconfig.yaml
+        sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' ./kernel/arch/arm64/configs/lineageos_sm6375_defconfig
+        sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' ./kernel/arch/arm64/configs/lineageos_sm6375_defconfig
+        sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' ./kernel/arch/arm64/configs/lineageos_sm6375_defconfig
 
         sed -i 's/-dirty//' ./scripts/setlocalversion
         sed -i 's/echo "${KERNELVERSION}${file_localversion}${config_localversion}${LOCALVERSION}${scm_version}"/echo "${KERNELVERSION}-${{ inputs.android_version }}-LineageOS"/' ./scripts/setlocalversion
         chmod +x ./scripts/setlocalversion
 
         DATE=$(date -u)
-        perl -pi -e 's{UTS_VERSION="\$\S+"}{UTS_VERSION="#1 SMP PREEMPT $DATE"}' ./scripts/mkcompile_h
+        perl -pi -e 's{UTS_VERSION="\$\S*"}{UTS_VERSION="#1 SMP PREEMPT $DATE"}' ./scripts/mkcompile_h
 
-    - name: Build the Kernel
+    - name: Build Kernel
       shell: bash
       run: |
         echo "Changing to configuration directory: $CONFIG..."
@@ -305,7 +305,7 @@ runs:
         make -j$(nproc --all) O=/tmp/out
 
         echo "Copying kernel image..."
-        cp /tmp/out/arch/arm64/boot/Image.gz ../image
+        cp /tmp/out/arch/arm64/boot/Image.gz ../Image.gz
 
     - name: Create ZIP File
       shell: bash
@@ -314,7 +314,7 @@ runs:
         cd "$CONFIG"
 
         echo "Copying Image..."
-        cp image ../image ../AnyKernel3/Image.gz
+        cp Image.gz ../AnyKernel3/Image.gz
 
         echo "Navigating to AnyKernel3 directory..."
         cd ../AnyKernel3
@@ -323,8 +323,8 @@ runs:
         echo "Creating ZIP file $ZIP_NAME..."
         zip -r "../$ZIP_NAME" ./*
 
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: kernel-${{ env_CONFIG }}
-          path: *.zip
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: kernel-${{ env.CONFIG }}
+        path: *.zip
