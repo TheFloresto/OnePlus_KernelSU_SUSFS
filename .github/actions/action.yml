@@ -33,8 +33,33 @@ inputs:
     default: ""
 
 runs:
-    using: "composite"
-    steps:
+  using: "composite"
+  steps:
+    - name: Maximize Build Space
+      uses: AdityaGarg8/remove-unwanted-software@v5
+      with:
+        remove-dotnet: 'true'
+        remove-android: 'true'
+        remove-haskell: 'true'
+        remove-codeql: 'true'
+        remove-docker-images: 'true'
+        remove-large-packages: 'true'
+        remove-swapfile: 'true'
+        remove-cached-tools: 'false'
+        verbose: 'true'
+
+    - name: Setup SWAP
+      shell: bash
+      run: |
+        echo "Setting up 20G swap space..."
+        sudo swapoff -a || true
+        sudo fallocate -l 20G /swapfile
+        sudo chmod 600 /swapfile
+        sudo mkswap /swapfile
+        sudo swapon /swapfile
+        echo "Swap setup complete!"
+        free -h
+
       - name: Setup Build System
         shell: bash
         run: |
@@ -47,28 +72,17 @@ runs:
           sudo docker image prune --all --force
           echo "some directories deleted"
           
-    steps:
-      - name: Maximize Build Space
-        uses: AdityaGarg8/remove-unwanted-software@v5
-        with:
-          remove-dotnet: 'true'          # Frees ~2 GB
-          remove-android: 'true'         # Frees ~9 GB
-          remove-haskell: 'true'         # Frees ~5.2 GB
-          remove-codeql: 'true'          # Frees ~5.4 GB
-          remove-docker-images: 'true'   # Frees ~3.2 GB
-          remove-large-packages: 'true'  # Frees ~3.1 GB
-          remove-swapfile: 'true'        # Frees ~4 GB
-          remove-cached-tools: 'false'   # Avoid unless confirmed safe
-          verbose: 'true'                # Enable detailed logging
-
-      - name: Setup SWAP
-        run: |
-          sudo swapoff -a
-          sudo fallocate -l 20G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
-          free -h
+          # Remove large unwanted packages
+          sudo apt-get purge -y \
+            aria2 ansible azure-cli shellcheck rpm xorriso zsync \
+            esl-erlang firefox gfortran-8 gfortran-9 google-chrome-stable \
+            google-cloud-sdk imagemagick \
+            libmagickcore-dev libmagickwand-dev libmagic-dev ant ant-optional kubectl \
+            mercurial apt-transport-https mono-complete libmysqlclient \
+            unixodbc-dev yarn chrpath libssl-dev libxft-dev \
+            libfreetype6 libfreetype6-dev libfontconfig1 libfontconfig1-dev \
+            snmp pollinate libpq-dev postgresql-client powershell ruby-full \
+            sphinxsearch subversion mongodb-org microsoft-edge-stable || true
           
           # Regex-based purges (for bulk families like mysql, php, dotnet)
           sudo apt-get purge -y $(dpkg-query -W -f='${binary:Package}\n' | grep -E '^mysql|^php|^dotnet') || true
@@ -350,7 +364,7 @@ runs:
           echo "Running sed commands..."
           
           sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' "./common/arch/arm64/configs/gki_defconfig"
-          sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_FULL=y/' "./common/arch/arm64/configs/gki_defconfig"
+          sed -i 's/CONFIG_LTO_CLANG_THIN=y/CONFIG_LTO_CLANG_FULL=y/' "./common/arch/arm64/configs/gki_defconfig"
           sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_FULL=y/' "./common/arch/arm64/configs/gki_defconfig"
           
           # Run sed commands for modifications
@@ -380,47 +394,47 @@ runs:
           perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./common/scripts/mkcompile_h
           perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./msm-kernel/scripts/mkcompile_h
 
-      - name: Build the Kernel
-        shell: bash
-        run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG"
-          
-          echo "Building the kernel..."
-          # Clear Cache
-          sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'
-          
-          rm ./kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
-          rm ./kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
-          
-          BUILD_TYPE="gki"
-          BAZEL_ARGS=(--jobs=$(nproc --all) --lto=full)
-          if [ "${{ inputs.soc }}" == "sun" ]; then
-            BUILD_TYPE="perf"
-            BAZEL_ARGS+=(-g)
-          fi
-          
-          (stdbuf -oL bash -c '
-            while true; do
-              echo "=== $(date) ==="
-              free -h
-              echo "======"
-              df -h
-              echo "======"
-              top -b -n 1 | head -n 15
-              echo ""
-              sleep 60
-            done
-          ') &
-          MONITOR_PID=$!
-          trap "kill $MONITOR_PID" EXIT
-          
-          if [ -f ./kernel_platform/build_with_bazel.py ]; then
-            ./kernel_platform/oplus/bazel/oplus_modules_variant.sh ${{ inputs.soc }} "$BUILD_TYPE" ""
-            ./kernel_platform/build_with_bazel.py -t ${{ inputs.soc }} $BUILD_TYPE "${BAZEL_ARGS[@]}" -o "$(pwd)/out"
-          else
-            LTO=full ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ inputs.soc }} "$BUILD_TYPE"
-          fi
+
+    - name: Build the Kernel
+      shell: bash
+      run: |
+        echo "Changing to configuration directory: $CONFIG..."
+        cd "$CONFIG"
+
+        echo "Building the kernel..."
+        sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'
+
+        rm ./kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
+        rm ./kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
+
+        BUILD_TYPE="gki"
+        BAZEL_ARGS=(--jobs=$(nproc --all) --lto=full)
+        if [ "${{ inputs.soc }}" == "sun" ]; then
+          BUILD_TYPE="perf"
+          BAZEL_ARGS+=(-g)
+        fi
+
+        (stdbuf -oL bash -c '
+          while true; do
+            echo "=== $(date) ==="
+            free -h
+            echo "======"
+            df -h
+            echo "======"
+            top -b -n 1 | head -n 15
+            echo ""
+            sleep 60
+          done
+        ') &
+        MONITOR_PID=$!
+        trap "kill $MONITOR_PID" EXIT
+
+        if [ -f ./kernel_platform/build_with_bazel.py ]; then
+          ./kernel_platform/oplus/bazel/oplus_modules_variant.sh ${{ inputs.soc }} "$BUILD_TYPE" ""
+          ./kernel_platform/build_with_bazel.py -t ${{ inputs.soc }} $BUILD_TYPE "${BAZEL_ARGS[@]}" -o "$(pwd)/out"
+        else
+          LTO=full ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ inputs.soc }} "$BUILD_TYPE"
+        fi
 
       - name: Create ZIP Files for Different Formats
         shell: bash
