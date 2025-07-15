@@ -50,6 +50,30 @@ on:
         required: false
         type: string
         default: ""
+      android12-5_10_susfs_branch:
+        description: "Choose SusFS Branch for android12-5.10"
+        type: string
+        default: "gki-android12-5.10"
+      android13-5_10_susfs_branch:
+        description: "Choose SusFS Branch for android13-5.10"
+        type: string
+        default: "gki-android13-5.10"
+      android13-5_15_susfs_branch:
+        description: "Choose SusFS Branch for android13-5.15"
+        type: string
+        default: "gki-android13-5.15"
+      android14-5_15_susfs_branch:
+        description: "Choose SusFS Branch for android14-5.15"
+        type: string
+        default: "gki-android14-5.15"
+      android14-6_1_susfs_branch:
+        description: "Choose SusFS Branch for android14-6.1"
+        type: string
+        default: "gki-android14-6.1"
+      android15-6_6_susfs_branch:
+        description: "Choose SusFS Branch for android15-6.6"
+        type: string
+        default: "gki-android15-6.6"
 
 jobs:
   notify:
@@ -80,7 +104,7 @@ jobs:
           [[ "${{ inputs.include_ksu }}" == "true" ]] && VARIANTS+=("\"KSU\"")
           [[ "${{ inputs.include_next }}" == "true" ]] && VARIANTS+=("\"NEXT\"")
           [[ "${{ inputs.include_mksu }}" == "true" ]] && VARIANTS+=("\"MKSU\"")
-          echo "matrix={\"kernelsu_variant\": [$(IFS=,; echo "${VARIANTS[*]}")]}" >> $GITHUB_OUTPUT
+          echo "matrix={\"kernelsu_variant\": [$(IFS=,; echo "${VARIANTS[*]}")], \"include\": [{\"model\": \"OP11\", \"soc\": \"kalama\", \"branch\": \"oneplus/sm8550\", \"manifest\": \"oneplus_11_v.xml\", \"android_version\": \"android13\", \"kernel_version\": \"5.15\", \"susfs_branch\": \"${{ inputs.android13-5_15_susfs_branch }}\"},{\"model\": \"OP11r\", \"soc\": \"waipio\", \"branch\": \"oneplus/sm8475\", \"manifest\": \"oneplus_11r_v.xml\", \"android_version\": \"android12\", \"kernel_version\": \"5.10\", \"susfs_branch\": \"${{ inputs.android12-5_10_susfs_branch }}\"},{\"model\": \"OP-OPEN\", \"soc\": \"kalama\", \"branch\": \"oneplus/sm8550\", \"manifest\": \"oneplus_open_v.xml\", \"android_version\": \"android13\", \"kernel_version\": \"5.15\", \"susfs_branch\": \"${{ inputs.android13-5_15_susfs_branch }}\"},{\"model\": \"OP-ACE-2\", \"soc\": \"waipio\", \"branch\": \"oneplus/sm8475\", \"manifest\": \"oneplus_ace2_v.xml\", \"android_version\": \"android12\", \"kernel_version\": \"5.10\", \"susfs_branch\": \"${{ inputs.android12-5_10_susfs_branch }}\"},{\"model\": \"OP10t\", \"soc\": \"waipio\", \"branch\": \"oneplus/sm8475\", \"manifest\": \"oneplus_10t_v.xml\", \"android_version\": \"android12\", \"kernel_version\": \"5.10\", \"susfs_branch\": \"${{ inputs.android12-5_10_susfs_branch }}\"},{\"model\": \"OP10pro\", \"soc\": \"waipio\", \"branch\": \"oneplus/sm8450\", \"manifest\": \"oneplus_10_pro_v.xml\", \"android_version\": \"android12\", \"kernel_version\": \"5.10\", \"susfs_branch\": \"${{ inputs.android12-5_10_susfs_branch }}\"},{\"model\": \"OP-ACE-2-PRO\", \"soc\": \"kalama\", \"branch\": \"oneplus/sm8550\", \"manifest\": \"oneplus_ace2_pro_v.xml\", \"android_version\": \"android13\", \"kernel_version\": \"5.15\", \"susfs_branch\": \"${{ inputs.android13-5_15_susfs_branch }}\"},{\"model\": \"OP12r\", \"soc\": \"kalama\", \"branch\": \"oneplus/sm8550\", \"manifest\": \"oneplus_12r_v.xml\", \"android_version\": \"android13\", \"kernel_version\": \"5.15\", \"susfs_branch\": \"${{ inputs.android13-5_15_susfs_branch }}\"},{\"model\": \"OP13\", \"soc\": \"sun\", \"branch\": \"oneplus/sm8750\", \"manifest\": \"oneplus_13.xml\", \"android_version\": \"android15\", \"kernel_version\": \"6.6\", \"susfs_branch\": \"${{ inputs.android15-6_6_susfs_branch }}\"},{\"model\": \"OPAce5Pro\", \"soc\": \"sun\", \"branch\": \"oneplus/sm8750\", \"manifest\": \"oneplus_ace5_pro.xml\", \"android_version\": \"android15\", \"kernel_version\": \"6.6\", \"susfs_branch\": \"${{ inputs.android15-6_6_susfs_branch }}\"},{\"model\": \"OP12\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm8650\", \"manifest\": \"oneplus12_v.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"${{ inputs.android14-6_1_susfs_branch }}\"},{\"model\": \"OP13r\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm8650\", \"manifest\": \"oneplus_13r.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"${{ inputs.android14-6_1_susfs_branch }}\"},{\"model\": \"OP-ACE-5\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm8650\", \"manifest\": \"oneplus_ace5.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"${{ inputs.android14-6_1_susfs_branch }}\"},{\"model\": \"OP-ACE-3V\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm7675\", \"manifest\": \"oneplus_ace_3v_v.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"${{ inputs.android14-6_1_susfs_branch }}\"},{\"model\": \"OP-NORD-4\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm7675\", \"manifest\": \"oneplus_nord_4_v.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"${{ inputs.android14-6_1_susfs_branch }}\"},{\"model\": \"OP-PAD-2\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm8650\", \"manifest\": \"oneplus_pad2_v.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"${{ inputs.android14-6_1_susfs_branch }}\"},{\"model\": \"OP13S\", \"soc\": \"sun\", \"branch\": \"oneplus/sm8750\", \"manifest\": \"oneplus_13s.xml\", \"android_version\": \"android15\", \"kernel_version\": \"6.6\", \"susfs_branch\": \"${{ inputs.android15-6_6_susfs_branch }}\"}]}" >> $GITHUB_OUTPUT
 
   build-oneplus:
     needs: set-matrix
@@ -89,30 +113,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model:
-          - OP11
-          - OP11r
-          - OP-OPEN
-          - OP-ACE-2
-          - OP10t
-          - OP10pro
-          - OP-ACE-2-PRO
-          - OP12r
-          - OP13
-          - OPAce5Pro
-          - OP12
-          - OP13r
-          - OP-ACE-5
-          - OP-ACE-3V
-          - OP-NORD-4
-          - OP-PAD-2
-          - OP13S
         kernelsu_variant: ${{ fromJson(needs.set-matrix.outputs.matrix).kernelsu_variant }}
+        include: ${{ fromJson(needs.set-matrix.outputs.matrix).include }}
     with:
       model: ${{ matrix.model }}
       kernelsu_variant: ${{ matrix.kernelsu_variant }}
       kernelsu_branch: ${{ inputs.kernelsu_branch }}
       kernelsu_branch_other: ${{ inputs.kernelsu_branch_other }}
+      soc: ${{ matrix.soc }}
+      branch: ${{ matrix.branch }}
+      manifest: ${{ matrix.manifest }}
+      android_version: ${{ matrix.android_version }}
+      kernel_version: ${{ matrix.kernel_version }}
+      susfs_branch: ${{ matrix.susfs_branch }}
 
   release:
     if: ${{ inputs.release_type == 'Release' || inputs.release_type == 'Pre-Release' }}
@@ -224,10 +237,10 @@ jobs:
           -> https://github.com/sidex15/ksu_module_susfs
       
           Managers:
-          -> Wild KSU: https://github.com/WildKernels/Wild_KSU / https://t.me/WildKernels
-          -> KernelSU: https://github.com/tiann/KernelSU / https://t.me/KernelSU_group
-          -> 5ec1cff's KernelSU: https://github.com/5ec1cff/KernelSU / https://t.me/mksu_ci
-          -> KernelSU-Next: https://github.com/rifsxd/KernelSU-Next / https://t.me/ksunext_group
+          -> Wild KSU: [${{ env.WILD_REF }}](${{ env.WILD_URL }}) / https://t.me/WildKernels
+          -> KernelSU: [${{ env.KSU_REF }}](${{ env.KSU_URL }}) / https://t.me/KernelSU_group
+          -> 5ec1cff's KernelSU: [${{ env.MKSU_REF }}](${{ env.MKSU_URL }}) / https://t.me/mksu_ci
+          -> KernelSU-Next: [${{ env.NEXT_REF }}](${{ env.NEXT_URL }}) / https://t.me/ksunext_group
           -> rsuntk: https://github.com/rsuntk/KernelSU / https://t.me/rsukrnlsu
           -> backslashxx: https://github.com/backslashxx/KernelSU
       
@@ -250,13 +263,13 @@ jobs:
         with:
           tag_name: ${{ env.NEW_TAG }}
           prerelease: ${{ inputs.release_type == 'Pre-Release' }}
-          files: ""
+          files: ./downloaded-artifacts/*-kernel-*/*.zip
           name: ${{ env.RELEASE_NAME }}
           body_path: release_body.md
 
       - name: Upload Release Assets
         run: |
-          for file in ./downloaded-artifacts/*-kernel-*/*; do
+          for file in ./downloaded-artifacts/*-kernel-*/*.zip; do
             if [ -d "$file" ]; then
               continue
             fi
@@ -267,7 +280,7 @@ jobs:
       - name: Display Files Uploaded
         run: |
           echo "GitHub release created with the following files:"
-          ls ./downloaded-artifacts/**/*
+          ls ./downloaded-artifacts/*-kernel-*/*.zip
 
       - name: Send Telegram Notification
         run: |
