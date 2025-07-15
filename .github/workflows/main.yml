@@ -16,7 +16,307 @@ on:
           - Pre-Release
           - Release
         default: Pre-Release
+      include_wild:ф```yaml
+name: Build OnePlus GKI Kernels
+
+permissions:
+  contents: write
+  actions: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: "Choose Release Type"
+        required: true
+        type: choice
+        options:
+          - Actions
+          - Pre-Release
+          - Release
+        default: Pre-Release
       include_wild:
+        description: 'Include WildKSU?'
+        required: true
+        type: boolean
+        default: false
+      include_ksu:
+        description: 'Include KSU?'
+        required: true
+        type: boolean
+        default: false
+      include_next:
+        description: 'Include KernelSU-Next?'
+        required: true
+        type: boolean
+        default: true
+      include_mksu:
+        description: 'Include MKSU?'
+        required: true
+        type: boolean
+        default: false
+      kernelsu_branch:
+        description: "Choose KSU branch"
+        required: true
+        type: choice
+        options:
+          - Stable
+          - Dev
+          - Other
+        default: Dev
+      kernelsu_branch_other:
+        description: "If 'Other' is selected, specify your custom branch"
+        required: false
+        type: string
+        default: ""
+      susfs_branches:
+        description: "SUSFS branches for Android/kernel versions (JSON format, e.g., {\"android12-5.10\": \"gki-android12-5.10\", ...})"
+        required: true
+        type: string
+        default: '{"android12-5.10": "gki-android12-5.10", "android13-5.10": "gki-android13-5.10", "android13-5.15": "gki-android13-5.15", "android14-5.15": "gki-android14-5.15", "android14-6.1": "gki-android14-6.1", "android15-6.6": "gki-android15-6.6"}'
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Telegram Notification
+        run: |
+          curl -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -F message_thread_id="${{ secrets.TELEGRAM_MESSAGE_THREAD_ID }}" \
+            -F text="
+            🚀 Build started for OnePlus Kernel! 
+            📦 *Repository:* [${{ github.repository }}](https://github.com/${{ github.repository }})
+            🗂️ *Branch:* ${{ github.ref_name }}
+            ✏️ *Commit:* [${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
+            [🔗 View GitHub Run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" \
+            -F parse_mode="Markdown"
+
+  set-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - id: set-matrix
+        run: |
+          VARIANTS=()
+          [[ "${{ inputs.include_wild }}" == "true" ]] && VARIANTS+=("\"WILD\"")
+          [[ "${{ inputs.include_ksu }}" == "true" ]] && VARIANTS+=("\"KSU\"")
+          [[ "${{ inputs.include_next }}" == "true" ]] && VARIANTS+=("\"NEXT\"")
+          [[ "${{ inputs.include_mksu }}" == "true" ]] && VARIANTS+=("\"MKSU\"")
+          
+          SUSFS_BRANCHES=$(echo "${{ inputs.susfs_branches }}" | jq -c .)
+          
+          MATRIX="{\"kernelsu_variant\": [$(IFS=,; echo "${VARIANTS[*]}")], \"include\": ["
+          MATRIX+="{\"model\": \"OP11\", \"soc\": \"kalama\", \"branch\": \"oneplus/sm8550\", \"manifest\": \"oneplus_11_v.xml\", \"android_version\": \"android13\", \"kernel_version\": \"5.15\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android13-5.15\"')\"},"
+          MATRIX+="{\"model\": \"OP11r\", \"soc\": \"waipio\", \"branch\": \"oneplus/sm8475\", \"manifest\": \"oneplus_11r_v.xml\", \"android_version\": \"android12\", \"kernel_version\": \"5.10\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android12-5.10\"')\"},"
+          MATRIX+="{\"model\": \"OP-OPEN\", \"soc\": \"kalama\", \"branch\": \"oneplus/sm8550\", \"manifest\": \"oneplus_open_v.xml\", \"android_version\": \"android13\", \"kernel_version\": \"5.15\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android13-5.15\"')\"},"
+          MATRIX+="{\"model\": \"OP-ACE-2\", \"soc\": \"waipio\", \"branch\": \"oneplus/sm8475\", \"manifest\": \"oneplus_ace2_v.xml\", \"android_version\": \"android12\", \"kernel_version\": \"5.10\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android12-5.10\"')\"},"
+          MATRIX+="{\"model\": \"OP10t\", \"soc\": \"waipio\", \"branch\": \"oneplus/sm8475\", \"manifest\": \"oneplus_10t_v.xml\", \"android_version\": \"android12\", \"kernel_version\": \"5.10\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android12-5.10\"')\"},"
+          MATRIX+="{\"model\": \"OP10pro\", \"soc\": \"waipio\", \"branch\": \"oneplus/sm8450\", \"manifest\": \"oneplus_10_pro_v.xml\", \"android_version\": \"android12\", \"kernel_version\": \"5.10\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android12-5.10\"')\"},"
+          MATRIX+="{\"model\": \"OP-ACE-2-PRO\", \"soc\": \"kalama\", \"branch\": \"oneplus/sm8550\", \"manifest\": \"oneplus_ace2_pro_v.xml\", \"android_version\": \"android13\", \"kernel_version\": \"5.15\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android13-5.15\"')\"},"
+          MATRIX+="{\"model\": \"OP12r\", \"soc\": \"kalama\", \"branch\": \"oneplus/sm8550\", \"manifest\": \"oneplus_12r_v.xml\", \"android_version\": \"android13\", \"kernel_version\": \"5.15\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android13-5.15\"')\"},"
+          MATRIX+="{\"model\": \"OP13\", \"soc\": \"sun\", \"branch\": \"oneplus/sm8750\", \"manifest\": \"oneplus_13.xml\", \"android_version\": \"android15\", \"kernel_version\": \"6.6\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android15-6.6\"')\"},"
+          MATRIX+="{\"model\": \"OPAce5Pro\", \"soc\": \"sun\", \"branch\": \"oneplus/sm8750\", \"manifest\": \"oneplus_ace5_pro.xml\", \"android_version\": \"android15\", \"kernel_version\": \"6.6\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android15-6.6\"')\"},"
+          MATRIX+="{\"model\": \"OP12\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm8650\", \"manifest\": \"oneplus12_v.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android14-6.1\"')\"},"
+          MATRIX+="{\"model\": \"OP13r\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm8650\", \"manifest\": \"oneplus_13r.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android14-6.1\"')\"},"
+          MATRIX+="{\"model\": \"OP-ACE-5\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm8650\", \"manifest\": \"oneplus_ace5.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android14-6.1\"')\"},"
+          MATRIX+="{\"model\": \"OP-ACE-3V\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm7675\", \"manifest\": \"oneplus_ace_3v_v.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android14-6.1\"')\"},"
+          MATRIX+="{\"model\": \"OP-NORD-4\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm7675\", \"manifest\": \"oneplus_nord_4_v.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android14-6.1\"')\"},"
+          MATRIX+="{\"model\": \"OP-PAD-2\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm8650\", \"manifest\": \"oneplus_pad2_v.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android14-6.1\"')\"},"
+          MATRIX+="{\"model\": \"OP13S\", \"soc\": \"sun\", \"branch\": \"oneplus/sm8750\", \"manifest\": \"oneplus_13s.xml\", \"android_version\": \"android15\", \"kernel_version\": \"6.6\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android15-6.6\"')\"}]"
+          MATRIX+="}"
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+
+  build-oneplus:
+    needs: set-matrix
+    uses: ./.github/workflows/build-oneplus.yml
+    secrets: inherit
+    strategy:
+      fail-fast: false
+      matrix:
+        kernelsu_variant: ${{ fromJson(needs.set-matrix.outputs.matrix).kernelsu_variant }}
+        include: ${{ fromJson(needs.set-matrix.outputs.matrix).include }}
+    with:
+      model: ${{ matrix.model }}
+      kernelsu_variant: ${{ matrix.kernelsu_variant }}
+      kernelsu_branch: ${{ inputs.kernelsu_branch }}
+      kernelsu_branch_other: ${{ inputs.kernelsu_branch_other }}
+      soc: ${{ matrix.soc }}
+      branch: ${{ matrix.branch }}
+      manifest: ${{ matrix.manifest }}
+      android_version: ${{ matrix.android_version }}
+      kernel_version: ${{ matrix.kernel_version }}
+      susfs_branch: ${{ matrix.susfs_branch }}
+
+  release:
+    if: ${{ inputs.release_type == 'Release' || inputs.release_type == 'Pre-Release' }}
+    runs-on: ubuntu-latest
+    needs: build-oneplus
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_NAME: "OnePlus GKI Kernels With WildKSU & SUSFS v1.5.9"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get commit hashes and generate commit URLs
+        run: |
+          GITLAB_OWNER="simonpunk"
+          GITLAB_REPO="susfs4ksu"
+          
+          declare -A BRANCH_MAP=(
+            ["gki_android12_5_10"]="gki-android12-5.10"
+            ["gki_android13_5_10"]="gki-android13-5.10"
+            ["gki_android13_5_15"]="gki-android13-5.15"
+            ["gki_android14_5_15"]="gki-android14-5.15"
+            ["gki_android14_6_1"]="gki-android14-6.1"
+            ["gki_android15_6_6"]="gki-android15-6.6"
+          )
+          
+          for var_name in "${!BRANCH_MAP[@]}"; do
+            branch_name="${BRANCH_MAP[$var_name]}"
+            COMMIT_HASH=$(git ls-remote https://gitlab.com/$GITLAB_OWNER/$GITLAB_REPO.git refs/heads/$branch_name | awk '{ print $1 }')
+            
+            if [[ -n "$COMMIT_HASH" ]]; then
+              COMMIT_URL="https://gitlab.com/$GITLAB_OWNER/$GITLAB_REPO/-/commit/$COMMIT_HASH"
+              echo "$branch_name Commit: $COMMIT_HASH"
+              echo "$branch_name Commit URL: $COMMIT_URL"
+              
+              echo "COMMIT_HASH_${var_name}=$COMMIT_HASH" >> "$GITHUB_ENV"
+              echo "COMMIT_URL_${var_name}=$COMMIT_URL" >> "$GITHUB_ENV"
+            fi
+          done
+
+      - name: Get KernelSU variant refs and links
+        run: |
+          BRANCH="${{ inputs.kernelsu_branch }}"
+      
+          get_ref() {
+            local name="$1" repo="$2" path="$3" mode="$4"
+            if [[ "$mode" == "tag" ]]; then
+              ref=$(git ls-remote --tags --sort=-v:refname "$repo" | grep -o 'refs/tags/.*' | cut -d/ -f3 | head -n1)
+              url="https://github.com/$path/releases/tag/$ref"
+            else
+              ref=$(git ls-remote "$repo" HEAD | awk '{print $1}')
+              url="https://github.com/$path/commit/$ref"
+            fi
+            echo "${name}_REF=$ref" >> $GITHUB_ENV
+            echo "${name}_URL=$url" >> $GITHUB_ENV
+          }
+      
+          [[ "$BRANCH" == "Stable" ]] && MODE="tag" || MODE="commit"
+
+          get_ref "WILD" "https://github.com/WildKernels/Wild_KSU.git" "WildKernels/Wild_KSU" "$MODE"
+          get_ref "KSU" "https://github.com/tiann/KernelSU.git" "tiann/KernelSU" "$MODE"
+          get_ref "NEXT" "https://github.com/KernelSU-Next/KernelSU-Next.git" "KernelSU-Next/KernelSU-Next" "$MODE"
+          get_ref "MKSU" "https://github.com/5ec1cff/KernelSU.git" "5ec1cff/KernelSU" "commit"
+
+      - name: Generate and Create New Tag
+        run: |
+          LATEST_TAG=$(gh api repos/${{ github.repository }}/tags --jq '.[0].name')
+          if [ -z "$LATEST_TAG" ]; then
+            LATEST_TAG="v1.5.9-r0"
+          fi
+          
+          NEW_TAG=$(echo "$LATEST_TAG" | awk -F'-r' '{suffix=$2; if (!suffix) suffix=0; suffix++; printf "%s-r%d", $1, suffix}')
+  
+          echo "New tag: $NEW_TAG"
+          echo "NEW_TAG=${NEW_TAG}" >> $GITHUB_ENV
+
+          git tag $NEW_TAG
+          git push origin $NEW_TAG
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./downloaded-artifacts
+
+      - name: Set release body
+        run: |
+          cat << 'EOF' > release_body.md
+          
+          Branch type for KSU: ${{ inputs.kernelsu_branch }}
+          OnePlus Kernel Tag: ${{ env.NEW_TAG }}
+      
+          Features:
+          -> Wild KSU Kernels & Others
+          -> Multi Manager Support for Wild Kernels & Next Kernels
+          -> SUSFS v1.5.9
+          -> Scope-Minimized Manual hooks v1.4
+          -> Magic Mount Support
+          -> Simple Maphide for LineageOS Detections
+          -> Futile Maphide for jit-zygote-cache Detections
+          -> Wireguard Support
+          -> BBR Support
+          -> HMBIRD scx support for OnePlus 13 & OnePlus Ace 5 Pro
+      
+          Notes:
+          -> Wild KSU & KernelSU-Next, SUS SU Mode 2 will show as disabled or not compatible due to non-kprobe hooks and is not needed anymore!
+          -> Official Kernel Flasher is broken with latest susfs, try https://github.com/fatalcoder524/KernelFlasher/ or https://github.com/libxzr/HorizonKernelFlasher!
+      
+          Module: 
+          -> https://github.com/sidex15/ksu_module_susfs
+      
+          Managers:
+          -> Wild KSU: [${{ env.WILD_REF }}](${{ env.WILD_URL }}) / https://t.me/WildKernels
+          -> KernelSU: [${{ env.KSU_REF }}](${{ env.KSU_URL }}) / https://t.me/KernelSU_group
+          -> 5ec1cff's KernelSU: [${{ env.MKSU_REF }}](${{ env.MKSU_URL }}) / https://t.me/mksu_ci
+          -> KernelSU-Next: [${{ env.NEXT_REF }}](${{ env.NEXT_URL }}) / https://t.me/ksunext_group
+          -> rsuntk: https://github.com/rsuntk/KernelSU / https://t.me/rsukrnlsu
+          -> backslashxx: https://github.com/backslashxx/KernelSU
+      
+          Commit Hashes (at the time of release):
+          -> Wild KSU: [${{ env.WILD_REF }}](${{ env.WILD_URL }})
+          -> KernelSU: [${{ env.KSU_REF }}](${{ env.KSU_URL }})
+          -> 5ec1cff: [${{ env.MKSU_REF }}](${{ env.MKSU_URL }})
+          -> KernelSU Next: [${{ env.NEXT_REF }}](${{ env.NEXT_URL }})
+          -> SUSFS4KSU: 
+            -> gki-android12-5.10: [${{ env.COMMIT_HASH_gki_android12_5_10 }}](${{ env.COMMIT_URL_gki_android12_5_10 }})
+            -> gki-android13-5.10: [${{ env.COMMIT_HASH_gki_android13_5_10 }}](${{ env.COMMIT_URL_gki_android13_5_10 }})
+            -> gki-android13-5.15: [${{ env.COMMIT_HASH_gki_android13_5_15 }}](${{ env.COMMIT_URL_gki_android13_5_15 }})
+            -> gki-android14-5.15: [${{ env.COMMIT_HASH_gki_android14_5_15 }}](${{ env.COMMIT_URL_gki_android14_5_15 }})
+            -> gki-android14-6.1: [${{ env.COMMIT_HASH_gki_android14_6_1 }}](${{ env.COMMIT_URL_gki_android14_6_1 }})
+            -> gki-android15-6.6: [${{ env.COMMIT_HASH_gki_android15_6_6 }}](${{ env.COMMIT_URL_gki_android15_6_6 }})
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.NEW_TAG }}
+          prerelease: ${{ inputs.release_type == 'Pre-Release' }}
+          files: ./downloaded-artifacts/*-kernel-*/*.zip
+          name: ${{ env.RELEASE_NAME }}
+          body_path: release_body.md
+
+      - name: Upload Release Assets
+        run: |
+          for file in ./downloaded-artifacts/*-kernel-*/*.zip; do
+            if [ -d "$file" ]; then
+              continue
+            fi
+            echo "Uploading $file..."
+            gh release upload ${{ env.NEW_TAG }} "$file"
+          done
+
+      - name: Display Files Uploaded
+        run: |
+          echo "GitHub release created with the following files:"
+          ls ./downloaded-artifacts/*-kernel-*/*.zip
+
+      - name: Send Telegram Notification
+        run: |
+          curl -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -F message_thread_id="${{ secrets.TELEGRAM_MESSAGE_THREAD_ID }}" \
+            -F text="
+            🌽 *New OnePlus Kernel Release Uploaded*  
+            📦 *Repository:* [${{ github.repository }}](https://github.com/${{ github.repository }})  
+            🗂️ *Branch:* ${{ github.ref_name }}  
+            ✏️ *Commit:* [${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})  
+            [🔗 View GitHub Release](https://github.com/${{ github.repository }}/releases/tag/${{ env.NEW_TAG }})" \
+            -F parse_mode="Markdown"
+
         description: 'Include WildKSU?'
         required: true
         type: boolean
