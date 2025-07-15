@@ -19,6 +19,24 @@ on:
       kernelsu_branch_other:
         required: false
         type: string
+      soc:
+        required: true
+        type: string
+      branch:
+        required: true
+        type: string
+      manifest:
+        required: true
+        type: string
+      android_version:
+        required: true
+        type: string
+      kernel_version:
+        required: true
+        type: string
+      susfs_branch:
+        required: true
+        type: string
 
 jobs:
   build-oneplus:
@@ -52,45 +70,6 @@ jobs:
           sudo swapon /swapfile
           free -h
 
-      - name: Set CONFIG Environment Variable
-        run: |
-          declare -A MODEL_CONFIG=(
-            ["OP11"]="android13-5.15-kalama-oneplus/sm8550-oneplus_11_v.xml"
-            ["OP11r"]="android12-5.10-waipio-oneplus/sm8475-oneplus_11r_v.xml"
-            ["OP-OPEN"]="android13-5.15-kalama-oneplus/sm8550-oneplus_open_v.xml"
-            ["OP-ACE-2"]="android12-5.10-waipio-oneplus/sm8475-oneplus_ace2_v.xml"
-            ["OP10t"]="android12-5.10-waipio-oneplus/sm8475-oneplus_10t_v.xml"
-            ["OP10pro"]="android12-5.10-waipio-oneplus/sm8450-oneplus_10_pro_v.xml"
-            ["OP-ACE-2-PRO"]="android13-5.15-kalama-oneplus/sm8550-oneplus_ace2_pro_v.xml"
-            ["OP12r"]="android13-5.15-kalama-oneplus/sm8550-oneplus_12r_v.xml"
-            ["OP13"]="android15-6.6-sun-oneplus/sm8750-oneplus_13.xml"
-            ["OPAce5Pro"]="android15-6.6-sun-oneplus/sm8750-oneplus_ace5_pro.xml"
-            ["OP12"]="android14-6.1-pineapple-oneplus/sm8650-oneplus12_v.xml"
-            ["OP13r"]="android14-6.1-pineapple-oneplus/sm8650-oneplus_13r.xml"
-            ["OP-ACE-5"]="android14-6.1-pineapple-oneplus/sm8650-oneplus_ace5.xml"
-            ["OP-ACE-3V"]="android14-6.1-pineapple-oneplus/sm7675-oneplus_ace_3v_v.xml"
-            ["OP-NORD-4"]="android14-6.1-pineapple-oneplus/sm7675-oneplus_nord_4_v.xml"
-            ["OP-PAD-2"]="android14-6.1-pineapple-oneplus/sm8650-oneplus_pad2_v.xml"
-            ["OP13S"]="android15-6.6-sun-oneplus/sm8750-oneplus_13s.xml"
-          )
-          CONFIG="${MODEL_CONFIG[${{ inputs.model }}]}"
-          if [ -z "$CONFIG" ]; then
-            echo "Error: Invalid model ${{ inputs.model }}"
-            exit 1
-          fi
-          echo "CONFIG=${CONFIG%%-*}" >> $GITHUB_ENV
-          ANDROID_VERSION=$(echo $CONFIG | cut -d- -f1)
-          KERNEL_VERSION=$(echo $CONFIG | cut -d- -f2)
-          SOC=$(echo $CONFIG | cut -d- -f3)
-          BRANCH=$(echo $CONFIG | cut -d- -f4)
-          MANIFEST=$(echo $CONFIG | cut -d- -f5)
-          echo "ANDROID_VERSION=$ANDROID_VERSION" >> $GITHUB_ENV
-          echo "KERNEL_VERSION=$KERNEL_VERSION" >> $GITHUB_ENV
-          echo "SOC=$SOC" >> $GITHUB_ENV
-          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
-          echo "MANIFEST=$MANIFEST" >> $GITHUB_ENV
-          echo "CONFIG set to: $CONFIG"
-
       - name: Install ccache
         run: sudo apt update && sudo apt install -y ccache
 
@@ -113,20 +92,28 @@ jobs:
         run: |
           echo "Cloning AnyKernel3 and other dependencies..."
           ANYKERNEL_BRANCH="gki-2.0"
-          SUSFS_BRANCH="gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}"
+          SUSFS_BRANCH="${{ inputs.susfs_branch }}"
           echo "Using branch for AnyKernel3: $ANYKERNEL_BRANCH"
           echo "Using branch for SUSFS: $SUSFS_BRANCH"
           git clone https://github.com/TheFloresto/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
           git clone https://github.com/TheFloresto/kernel_patches.git -b main
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git
+          cd susfs4ksu || exit 1
+          if git rev-parse --verify "origin/$SUSFS_BRANCH" >/dev/null 2>&1 || git rev-parse --verify "$SUSFS_BRANCH" >/dev/null 2>&1; then
+            git checkout "$SUSFS_BRANCH"
+          else
+            echo "Error: '$SUSFS_BRANCH' is neither a valid branch, tag, nor commit hash."
+            exit 1
+          fi
+          cd .. || exit 1
 
       - name: Initialize and Sync Kernel Source
         run: |
-          echo "Creating folder for configuration: $CONFIG..."
-          mkdir -p "$CONFIG"
-          cd "$CONFIG"
+          echo "Creating folder for kernel source..."
+          mkdir -p kernel_source
+          cd kernel_source
           echo "Initializing and syncing kernel source..."
-          $REPO init --depth=1 -u https://github.com/OnePlusOSS/kernel_manifest.git -b ${{ env.BRANCH }} -m ${{ env.MANIFEST }} --repo-rev=v2.16
+          $REPO init --depth=1 -u https://github.com/OnePlusOSS/kernel_manifest.git -b ${{ inputs.branch }} -m ${{ inputs.manifest }} --repo-rev=v2.16
           $REPO --version
           $REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast
 
@@ -157,8 +144,8 @@ jobs:
 
       - name: Add KernelSU
         run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG/kernel_platform"
+          echo "Changing to kernel_source directory..."
+          cd kernel_source/kernel_platform
           case "${{ inputs.kernelsu_variant }}" in
             "WILD")
               echo "Adding Wild KSU..."
@@ -181,14 +168,22 @@ jobs:
 
       - name: Apply SUSFS Patches
         run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG/kernel_platform"
+          echo "Changing to kernel_source directory..."
+          cd kernel_source/kernel_platform
           echo "Applying SUSFS patches..."
-          cp ../../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./common/
-          cp ../../susfs4ksu/kernel_patches/fs/* ./common/fs/
-          cp ../../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+          if [ -f ../../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ]; then
+            cp ../../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/
+          else
+            echo "Warning: 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch not found, skipping..."
+          fi
+          cp -r ../../susfs4ksu/kernel_patches/fs/* ./common/fs/ || echo "Warning: SUSFS fs patches not found, skipping..."
+          cp -r ../../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/ || echo "Warning: SUSFS include/linux patches not found, skipping..."
           cd ./common
-          patch -p1 --forward --fuzz=3 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
+          if [ -f 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ]; then
+            patch -p1 --forward --fuzz=3 < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch || true
+          else
+            echo "Warning: 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch not found, skipping patch application..."
+          fi
           cd ../
           case "${{ inputs.kernelsu_variant }}" in
             "WILD")
@@ -198,26 +193,30 @@ jobs:
             "KSU")
               echo "Applying SUSFS patches for Official KernelSU..."
               cd ./KernelSU
-              cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-              patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || true
+              if [ -f ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ]; then
+                cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
+                patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || true
+              else
+                echo "Warning: 10_enable_susfs_for_ksu.patch not found, skipping..."
+              fi
               ;;
             "NEXT")
               echo "Applying SUSFS patches for KernelSU Next..."
               cd ./KernelSU-Next
-              cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-              patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || true
-              cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_apk_sign.c.patch ./
-              patch -p1 --forward --fuzz=3 < fix_apk_sign.c.patch
-              cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_core_hook.c.patch ./
-              patch -p1 --forward --fuzz=3 < fix_core_hook.c.patch
-              cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_selinux.c.patch ./
-              patch -p1 --forward --fuzz=3 < fix_selinux.c.patch
-              cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_ksud.c.patch ./
-              patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
-              cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_rules.c.patch ./
-              patch -p1 --forward --fuzz=3 < fix_rules.c.patch
-              cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_sucompat.c.patch ./
-              patch -p1 --forward --fuzz=3 < fix_sucompat.c.patch
+              if [ -f ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ]; then
+                cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
+                patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || true
+              else
+                echo "Warning: 10_enable_susfs_for_ksu.patch not found, skipping..."
+              fi
+              for patch in fix_apk_sign.c.patch fix_core_hook.c.patch fix_selinux.c.patch fix_ksud.c.patch fix_rules.c.patch fix_sucompat.c.patch; do
+                if [ -f ../../kernel_patches/next/susfs_fix_patches/v1.5.9/$patch ]; then
+                  cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/$patch ./
+                  patch -p1 --forward --fuzz=3 < $patch || true
+                else
+                  echo "Warning: $patch not found, skipping..."
+                fi
+              done
               ;;
             "MKSU")
               echo "Applying SUSFS patches for MKSU..."
@@ -227,8 +226,8 @@ jobs:
 
       - name: Getting KernelSU Version
         run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG/kernel_platform"
+          echo "Changing to kernel_source directory..."
+          cd kernel_source/kernel_platform
           case "${{ inputs.kernelsu_variant }}" in
             "WILD")
               cd ./Wild_KSU
@@ -255,40 +254,60 @@ jobs:
       - name: Apply HMBIRD Patches
         if: ${{ inputs.model == 'OPAce5Pro' || inputs.model == 'OP13' }}
         run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG/kernel_platform"
+          echo "Changing to kernel_source directory..."
+          cd kernel_source/kernel_platform
           echo "Patching hmbird for ${{ inputs.model }}..."
           echo 'obj-y += hmbird_patch.o' >> ./drivers/Makefile
-          patch -p1 -F 3 < "../../kernel_patches/oneplus/hmbird/hmbird_kernel_patch.patch"
+          if [ -f ../../kernel_patches/oneplus/hmbird/hmbird_kernel_patch.patch ]; then
+            patch -p1 -F 3 < "../../kernel_patches/oneplus/hmbird/hmbird_kernel_patch.patch" || true
+          else
+            echo "Warning: hmbird_kernel_patch.patch not found, skipping..."
+          fi
           cd ./kernel/sched
-          rm -rf ext.c ext.h build_policy.c slim.h slim_sysctl.c
-          patch -p1 -F 3 < "../../../../../kernel_patches/oneplus/hmbird/hmbird_files_patch.patch"
+          rm -rf ext.c ext.h build_policy.c slim.h slim_sysctl.c || true
+          if [ -f ../../../../../kernel_patches/oneplus/hmbird/hmbird_files_patch.patch ]; then
+            patch -p1 -F 3 < "../../../../../kernel_patches/oneplus/hmbird/hmbird_files_patch.patch" || true
+          else
+            echo "Warning: hmbird_files_patch.patch not found, skipping..."
+          fi
 
       - name: Apply Hide Stuff Patches
         run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG/kernel_platform/common"
-          cp ../../kernel_patches/69_hide_stuff.patch ./
-          patch -p1 -F 3 < 69_hide_stuff.patch
+          echo "Changing to kernel_source directory..."
+          cd kernel_source/kernel_platform/common
+          if [ -f ../../kernel_patches/69_hide_stuff.patch ]; then
+            cp ../../kernel_patches/69_hide_stuff.patch ./
+            patch -p1 -F 3 < 69_hide_stuff.patch || true
+          else
+            echo "Warning: 69_hide_stuff.patch not found, skipping..."
+          fi
 
       - name: Apply Hooks Patches
         run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG/kernel_platform/common"
+          echo "Changing to kernel_source directory..."
+          cd kernel_source/kernel_platform/common
           if [ "${{ inputs.kernelsu_variant }}" == "NEXT" ]; then
             echo "Applying hooks for KernelSU-Next..."
-            cp ../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./
-            patch -p1 -F 3 < scope_min_manual_hooks_v1.4.patch
+            if [ -f ../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ]; then
+              cp ../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./
+              patch -p1 -F 3 < scope_min_manual_hooks_v1.4.patch || true
+            else
+              echo "Warning: scope_min_manual_hooks_v1.4.patch not found, skipping..."
+            fi
           elif [ "${{ inputs.kernelsu_variant }}" == "WILD" ]; then
             echo "Applying hooks for Wild KSU..."
-            cp ../../kernel_patches/wild/syscall_hooks.patch ./
-            patch -p1 -F 3 < syscall_hooks.patch
+            if [ -f ../../kernel_patches/wild/syscall_hooks.patch ]; then
+              cp ../../kernel_patches/wild/syscall_hooks.patch ./
+              patch -p1 -F 3 < syscall_hooks.patch || true
+            else
+              echo "Warning: syscall_hooks.patch not found, skipping..."
+            fi
           fi
 
       - name: Add KernelSU and SUSFS Configuration Settings
         run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG/kernel_platform"
+          echo "Changing to kernel_source directory..."
+          cd kernel_source/kernel_platform
           echo "Adding configuration settings to gki_defconfig..."
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
           if [ "${{ inputs.kernelsu_variant }}" == "NEXT" ] || [ "${{ inputs.kernelsu_variant }}" == "WILD" ]; then
@@ -328,7 +347,7 @@ jobs:
 
       - name: Change Kernel Name
         run: |
-          cd "$CONFIG/kernel_platform"
+          cd kernel_source/kernel_platform
           CURRENT_DATE=$(date -u +"%a %b %d %H:%M:%S UTC %Y")
           perl -pi -e "s{UTS_VERSION=\"\\\$\\(echo \\\$UTS_VERSION \\\$CONFIG_FLAGS \\\$TIMESTAMP \\| cut -b -\\\$UTS_LEN\\)\"}{UTS_VERSION=\"#1 SMP PREEMPT $CURRENT_DATE\"}" ./common/scripts/mkcompile_h
           sed -i '$s|echo "\$res"|echo "\$res-@NoFloresto+@mr_vokintos"|' ./common/scripts/setlocalversion
@@ -338,54 +357,58 @@ jobs:
 
       - name: Build the Kernel
         run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG"
+          echo "Changing to kernel_source directory..."
+          cd kernel_source
           echo "Building the kernel..."
           sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'
           rm ./kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm ./kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
           BUILD_TYPE="gki"
           BAZEL_ARGS=(--jobs=$(nproc --all) --lto=thin)
-          if [ "${{ env.SOC }}" == "sun" ]; then
+          if [[ "${{ inputs.soc }}" == "sun" || "${{ inputs.soc }}" == "pineapple" ]]; then
             BUILD_TYPE="perf"
             BAZEL_ARGS+=(-g)
           fi
           if [ -f ./kernel_platform/build_with_bazel.py ]; then
-            ./kernel_platform/oplus/bazel/oplus_modules_variant.sh ${{ env.SOC }} "$BUILD_TYPE" ""
-            ./kernel_platform/build_with_bazel.py -t ${{ env.SOC }} $BUILD_TYPE "${BAZEL_ARGS[@]}" -o "$(pwd)/out"
+            ./kernel_platform/oplus/bazel/oplus_modules_variant.sh ${{ inputs.soc }} "$BUILD_TYPE" ""
+            ./kernel_platform/build_with_bazel.py -t ${{ inputs.soc }} $BUILD_TYPE "${BAZEL_ARGS[@]}" -o "$(pwd)/out"
           else
-            LTO=thin ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ env.SOC }} "$BUILD_TYPE"
+            LTO=thin ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ inputs.soc }} "$BUILD_TYPE"
           fi
           ccache --show-stats
 
-      - name: Create Boot Images
+      - name: Create AK3 Zip File
         run: |
-          mkdir bootimgs
-          echo "Copying kernel images..."
-          if [ "${{ env.ANDROID_VERSION }}" == "android12" ] || [ "${{ env.ANDROID_VERSION }}" == "android13" ]; then
-            cp ./$CONFIG/out/${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}/dist/Image ./bootimgs/Image
+          echo "Creating AnyKernel3 zip file..."
+          cd kernel_source
+          mkdir -p bootimgs
+          echo "Copying kernel image..."
+          if [ "${{ inputs.android_version }}" == "android12" ] || [ "${{ inputs.android_version }}" == "android13" ]; then
+            cp ./out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image ./bootimgs/Image || echo "Warning: Kernel Image not found, proceeding..."
           else
-            cp ./$CONFIG/bazel-bin/common/kernel_aarch64/Image ./bootimgs/Image
+            cp ./bazel-bin/common/kernel_aarch64/Image ./bootimgs/Image || echo "Warning: Kernel Image not found, proceeding..."
           fi
-
-      - name: Create ZIP File
-        run: |
-          echo "Creating zip file..."
-          cd "$CONFIG"
-          cp ./bootimgs/Image ../AnyKernel3/Image
           cd ../AnyKernel3
-          if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13" ]; then
-            cp ../kernel_patches/oneplus/hmbird/bins/* ./tools/
-            patch -F 3 < ../kernel_patches/oneplus/hmbird/ak3_hmbird_patch.patch
+          if [ -f ../kernel_source/bootimgs/Image ]; then
+            cp ../kernel_source/bootimgs/Image ./Image
+          else
+            echo "Warning: Kernel Image not copied, creating zip without it..."
           fi
-          ZIP_NAME="${{ inputs.kernelsu_variant }}-${{ env.KSUVER }}-${{ inputs.model }}-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.zip"
+          if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13" ]; then
+            cp ../kernel_patches/oneplus/hmbird/bins/* ./tools/ || echo "Warning: HMBIRD bins not found, skipping..."
+            if [ -f ../kernel_patches/oneplus/hmbird/ak3_hmbird_patch.patch ]; then
+              patch -F 3 < ../kernel_patches/oneplus/hmbird/ak3_hmbird_patch.patch || true
+            else
+              echo "Warning: ak3_hmbird_patch.patch not found, skipping..."
+            fi
+          fi
+          ZIP_NAME="${{ inputs.kernelsu_variant }}-${{ env.KSUVER }}-${{ inputs.model }}-${{ inputs.android_version }}-${{ inputs.kernel_version }}.zip"
           echo "Creating zip file: $ZIP_NAME..."
           zip -r "../$ZIP_NAME" ./*
-          
+
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.kernelsu_variant }}-kernel-${{ inputs.model }}
           path: |
             *.zip
-            bootimgs/Image
