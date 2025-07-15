@@ -120,10 +120,10 @@ jobs:
       - name: Determine the branch for KernelSU
         run: |
           case "${{ inputs.kernelsu_branch }}" in
-            "Stable")
+            "stable"|"Stable")
               echo "BRANCH=-" >> $GITHUB_ENV
               ;;
-            "Dev")
+            "next"|"Dev")
               if [[ "${{ inputs.kernelsu_variant }}" =~ ^(KSU|MKSU)$ ]]; then
                 echo "BRANCH=-s main" >> $GITHUB_ENV
               elif [[ "${{ inputs.kernelsu_variant }}" == "NEXT" ]]; then
@@ -339,7 +339,7 @@ jobs:
           echo "CONFIG_IP6_NF_TARGET_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_IP6_NF_MATCH_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG、BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_NET_SCH_FQ=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TCP_CONG_BIC=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
