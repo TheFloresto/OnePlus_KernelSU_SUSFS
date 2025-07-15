@@ -78,35 +78,62 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
       - id: set-matrix
         run: |
+          # Debug: Print inputs
+          echo "Inputs:"
+          echo "include_wild: ${{ inputs.include_wild }}"
+          echo "include_ksu: ${{ inputs.include_ksu }}"
+          echo "include_next: ${{ inputs.include_next }}"
+          echo "include_mksu: ${{ inputs.include_mksu }}"
+          echo "susfs_branches: ${{ inputs.susfs_branches }}"
+
+          # Initialize VARIANTS array
           VARIANTS=()
           [[ "${{ inputs.include_wild }}" == "true" ]] && VARIANTS+=("\"WILD\"")
           [[ "${{ inputs.include_ksu }}" == "true" ]] && VARIANTS+=("\"KSU\"")
           [[ "${{ inputs.include_next }}" == "true" ]] && VARIANTS+=("\"NEXT\"")
           [[ "${{ inputs.include_mksu }}" == "true" ]] && VARIANTS+=("\"MKSU\"")
-          
-          SUSFS_BRANCHES=$(echo "${{ inputs.susfs_branches }}" | jq -c .)
-          
+
+          # Check if VARIANTS is empty
+          if [ ${#VARIANTS[@]} -eq 0 ]; then
+            echo "Error: No KernelSU variants selected (WILD, KSU, NEXT, MKSU). At least one must be included."
+            exit 1
+          fi
+
+          # Validate JSON input
+          SUSFS_BRANCHES=$(echo "${{ inputs.susfs_branches }}" | jq -c . || {
+            echo "Error: Invalid JSON in susfs_branches: ${{ inputs.susfs_branches }}"
+            exit 1
+          })
+
+          # Construct matrix
           MATRIX="{\"kernelsu_variant\": [$(IFS=,; echo "${VARIANTS[*]}")], \"include\": ["
-          MATRIX+="{\"model\": \"OP11\", \"soc\": \"kalama\", \"branch\": \"oneplus/sm8550\", \"manifest\": \"oneplus_11_v.xml\", \"android_version\": \"android13\", \"kernel_version\": \"5.15\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android13-5.15\"')\"},"
-          MATRIX+="{\"model\": \"OP11r\", \"soc\": \"waipio\", \"branch\": \"oneplus/sm8475\", \"manifest\": \"oneplus_11r_v.xml\", \"android_version\": \"android12\", \"kernel_version\": \"5.10\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android12-5.10\"')\"},"
-          MATRIX+="{\"model\": \"OP-OPEN\", \"soc\": \"kalama\", \"branch\": \"oneplus/sm8550\", \"manifest\": \"oneplus_open_v.xml\", \"android_version\": \"android13\", \"kernel_version\": \"5.15\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android13-5.15\"')\"},"
-          MATRIX+="{\"model\": \"OP-ACE-2\", \"soc\": \"waipio\", \"branch\": \"oneplus/sm8475\", \"manifest\": \"oneplus_ace2_v.xml\", \"android_version\": \"android12\", \"kernel_version\": \"5.10\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android12-5.10\"')\"},"
-          MATRIX+="{\"model\": \"OP10t\", \"soc\": \"waipio\", \"branch\": \"oneplus/sm8475\", \"manifest\": \"oneplus_10t_v.xml\", \"android_version\": \"android12\", \"kernel_version\": \"5.10\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android12-5.10\"')\"},"
-          MATRIX+="{\"model\": \"OP10pro\", \"soc\": \"waipio\", \"branch\": \"oneplus/sm8450\", \"manifest\": \"oneplus_10_pro_v.xml\", \"android_version\": \"android12\", \"kernel_version\": \"5.10\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android12-5.10\"')\"},"
-          MATRIX+="{\"model\": \"OP-ACE-2-PRO\", \"soc\": \"kalama\", \"branch\": \"oneplus/sm8550\", \"manifest\": \"oneplus_ace2_pro_v.xml\", \"android_version\": \"android13\", \"kernel_version\": \"5.15\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android13-5.15\"')\"},"
-          MATRIX+="{\"model\": \"OP12r\", \"soc\": \"kalama\", \"branch\": \"oneplus/sm8550\", \"manifest\": \"oneplus_12r_v.xml\", \"android_version\": \"android13\", \"kernel_version\": \"5.15\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android13-5.15\"')\"},"
-          MATRIX+="{\"model\": \"OP13\", \"soc\": \"sun\", \"branch\": \"oneplus/sm8750\", \"manifest\": \"oneplus_13.xml\", \"android_version\": \"android15\", \"kernel_version\": \"6.6\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android15-6.6\"')\"},"
-          MATRIX+="{\"model\": \"OPAce5Pro\", \"soc\": \"sun\", \"branch\": \"oneplus/sm8750\", \"manifest\": \"oneplus_ace5_pro.xml\", \"android_version\": \"android15\", \"kernel_version\": \"6.6\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android15-6.6\"')\"},"
-          MATRIX+="{\"model\": \"OP12\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm8650\", \"manifest\": \"oneplus12_v.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android14-6.1\"')\"},"
-          MATRIX+="{\"model\": \"OP13r\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm8650\", \"manifest\": \"oneplus_13r.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android14-6.1\"')\"},"
-          MATRIX+="{\"model\": \"OP-ACE-5\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm8650\", \"manifest\": \"oneplus_ace5.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android14-6.1\"')\"},"
-          MATRIX+="{\"model\": \"OP-ACE-3V\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm7675\", \"manifest\": \"oneplus_ace_3v_v.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android14-6.1\"')\"},"
-          MATRIX+="{\"model\": \"OP-NORD-4\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm7675\", \"manifest\": \"oneplus_nord_4_v.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android14-6.1\"')\"},"
-          MATRIX+="{\"model\": \"OP-PAD-2\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm8650\", \"manifest\": \"oneplus_pad2_v.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android14-6.1\"')\"},"
-          MATRIX+="{\"model\": \"OP13S\", \"soc\": \"sun\", \"branch\": \"oneplus/sm8750\", \"manifest\": \"oneplus_13s.xml\", \"android_version\": \"android15\", \"kernel_version\": \"6.6\", \"susfs_branch\": \"$(echo $SUSFS_BRANCHES | jq -r '.\"android15-6.6\"')\"}]"
+          MATRIX+="{\"model\": \"OP11\", \"soc\": \"kalama\", \"branch\": \"oneplus/sm8550\", \"manifest\": \"oneplus_11_v.xml\", \"android_version\": \"android13\", \"kernel_version\": \"5.15\", \"susfs_branch\": \"$(echo "$SUSFS_BRANCHES" | jq -r '.\"android13-5.15\"')\"},"
+          MATRIX+="{\"model\": \"OP11r\", \"soc\": \"waipio\", \"branch\": \"oneplus/sm8475\", \"manifest\": \"oneplus_11r_v.xml\", \"android_version\": \"android12\", \"kernel_version\": \"5.10\", \"susfs_branch\": \"$(echo "$SUSFS_BRANCHES" | jq -r '.\"android12-5.10\"')\"},"
+          MATRIX+="{\"model\": \"OP-OPEN\", \"soc\": \"kalama\", \"branch\": \"oneplus/sm8550\", \"manifest\": \"oneplus_open_v.xml\", \"android_version\": \"android13\", \"kernel_version\": \"5.15\", \"susfs_branch\": \"$(echo "$SUSFS_BRANCHES" | jq -r '.\"android13-5.15\"')\"},"
+          MATRIX+="{\"model\": \"OP-ACE-2\", \"soc\": \"waipio\", \"branch\": \"oneplus/sm8475\", \"manifest\": \"oneplus_ace2_v.xml\", \"android_version\": \"android12\", \"kernel_version\": \"5.10\", \"susfs_branch\": \"$(echo "$SUSFS_BRANCHES" | jq -r '.\"android12-5.10\"')\"},"
+          onplus/sm8550\", \"manifest\": \"oneplus_ace2_pro_v.xml\", \"android_version\": \"android13\", \"kernel_version\": \"5.15\", \"susfs_branch\": \"$(echo "$SUSFS_BRANCHES" | jq -r '.\"android13-5.15\"')\"},"
+          MATRIX+="{\"model\": \"OP12r\", \"soc\": \"kalama\", \"branch\": \"oneplus/sm8550\", \"manifest\": \"oneplus_12r_v.xml\", \"android_version\": \"android13\", \"kernel_version\": \"5.15\", \"susfs_branch\": \"$(echo "$SUSFS_BRANCHES" | jq -r '.\"android13-5.15\"')\"},"
+          MATRIX+="{\"model\": \"OP13\", \"soc\": \"sun\", \"branch\": \"oneplus/sm8750\", \"manifest\": \"oneplus_13.xml\", \"android_version\": \"android15\", \"kernel_version\": \"6.6\", \"susfs_branch\": \"$(echo "$SUSFS_BRANCHES" | jq -r '.\"android15-6.6\"')\"},"
+          MATRIX+="{\"model\": \"OPAce5Pro\", \"soc\": \"sun\", \"branch\": \"oneplus/sm8750\", \"manifest\": \"oneplus_ace5_pro.xml\", \"android_version\": \"android15\", \"kernel_version\": \"6.6\", \"susfs_branch\": \"$(echo "$SUSFS_BRANCHES" | jq -r '.\"android15-6.6\"')\"},"
+          MATRIX+="{\"model\": \"OP12\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm8650\", \"manifest\": \"oneplus12_v.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"$(echo "$SUSFS_BRANCHES" | jq -r '.\"android14-6.1\"')\"},"
+          MATRIX+="{\"model\": \"OP13r\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm8650\", \"manifest\": \"oneplus_13r.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"$(echo "$SUSFS_BRANCHES" | jq -r '.\"android14-6.1\"')\"},"
+          MATRIX+="{\"model\": \"OP-ACE-5\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm8650\", \"manifest\": \"oneplus_ace5.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"$(echo "$SUSFS_BRANCHES" | jq -r '.\"android14-6.1\"')\"},"
+          MATRIX+="{\"model\": \"OP-ACE-3V\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm7675\", \"manifest\": \"oneplus_ace_3v_v.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"$(echo "$SUSFS_BRANCHES" | jq -r '.\"android14-6.1\"')\"},"
+          MATRIX+="{\"model\": \"OP-NORD-4\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm7675\", \"manifest\": \"oneplus_nord_4_v.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"$(echo "$SUSFS_BRANCHES" | jq -r '.\"android14-6.1\"')\"},"
+          MATRIX+="{\"model\": \"OP-PAD-2\", \"soc\": \"pineapple\", \"branch\": \"oneplus/sm8650\", \"manifest\": \"oneplus_pad2_v.xml\", \"android_version\": \"android14\", \"kernel_version\": \"6.1\", \"susfs_branch\": \"$(echo "$SUSFS_BRANCHES" | jq -r '.\"android14-6.1\"')\"}]"
           MATRIX+="}"
+
+          # Validate the constructed JSON
+          echo "$MATRIX" | jq . > /dev/null || {
+            echo "Error: Invalid JSON in MATRIX"
+            echo "$MATRIX"
+            exit 1
+          }
+
           echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
 
   build-oneplus:
