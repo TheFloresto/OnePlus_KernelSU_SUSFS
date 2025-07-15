@@ -1,0 +1,391 @@
+name: Build OnePlus Kernel
+
+permissions:
+  contents: write
+  actions: write
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        required: true
+        type: string
+      kernelsu_variant:
+        required: true
+        type: string
+      kernelsu_branch:
+        required: true
+        type: string
+      kernelsu_branch_other:
+        required: false
+        type: string
+
+jobs:
+  build-oneplus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_HARDLINK: "true"
+
+    steps:
+      - name: Maximize Build Space
+        uses: AdityaGarg8/remove-unwanted-software@v5
+        with:
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+          remove-docker-images: 'true'
+          remove-large-packages: 'true'
+          remove-swapfile: 'true'
+          remove-cached-tools: 'false'
+          verbose: 'true'
+
+      - name: Setup SWAP
+        run: |
+          sudo swapoff -a
+          sudo fallocate -l 20G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
+
+      - name: Set CONFIG Environment Variable
+        run: |
+          declare -A MODEL_CONFIG=(
+            ["OP11"]="android13-5.15-kalama-oneplus/sm8550-oneplus_11_v.xml"
+            ["OP11r"]="android12-5.10-waipio-oneplus/sm8475-oneplus_11r_v.xml"
+            ["OP-OPEN"]="android13-5.15-kalama-oneplus/sm8550-oneplus_open_v.xml"
+            ["OP-ACE-2"]="android12-5.10-waipio-oneplus/sm8475-oneplus_ace2_v.xml"
+            ["OP10t"]="android12-5.10-waipio-oneplus/sm8475-oneplus_10t_v.xml"
+            ["OP10pro"]="android12-5.10-waipio-oneplus/sm8450-oneplus_10_pro_v.xml"
+            ["OP-ACE-2-PRO"]="android13-5.15-kalama-oneplus/sm8550-oneplus_ace2_pro_v.xml"
+            ["OP12r"]="android13-5.15-kalama-oneplus/sm8550-oneplus_12r_v.xml"
+            ["OP13"]="android15-6.6-sun-oneplus/sm8750-oneplus_13.xml"
+            ["OPAce5Pro"]="android15-6.6-sun-oneplus/sm8750-oneplus_ace5_pro.xml"
+            ["OP12"]="android14-6.1-pineapple-oneplus/sm8650-oneplus12_v.xml"
+            ["OP13r"]="android14-6.1-pineapple-oneplus/sm8650-oneplus_13r.xml"
+            ["OP-ACE-5"]="android14-6.1-pineapple-oneplus/sm8650-oneplus_ace5.xml"
+            ["OP-ACE-3V"]="android14-6.1-pineapple-oneplus/sm7675-oneplus_ace_3v_v.xml"
+            ["OP-NORD-4"]="android14-6.1-pineapple-oneplus/sm7675-oneplus_nord_4_v.xml"
+            ["OP-PAD-2"]="android14-6.1-pineapple-oneplus/sm8650-oneplus_pad2_v.xml"
+            ["OP13S"]="android15-6.6-sun-oneplus/sm8750-oneplus_13s.xml"
+          )
+          CONFIG="${MODEL_CONFIG[${{ inputs.model }}]}"
+          if [ -z "$CONFIG" ]; then
+            echo "Error: Invalid model ${{ inputs.model }}"
+            exit 1
+          fi
+          echo "CONFIG=${CONFIG%%-*}" >> $GITHUB_ENV
+          ANDROID_VERSION=$(echo $CONFIG | cut -d- -f1)
+          KERNEL_VERSION=$(echo $CONFIG | cut -d- -f2)
+          SOC=$(echo $CONFIG | cut -d- -f3)
+          BRANCH=$(echo $CONFIG | cut -d- -f4)
+          MANIFEST=$(echo $CONFIG | cut -d- -f5)
+          echo "ANDROID_VERSION=$ANDROID_VERSION" >> $GITHUB_ENV
+          echo "KERNEL_VERSION=$KERNEL_VERSION" >> $GITHUB_ENV
+          echo "SOC=$SOC" >> $GITHUB_ENV
+          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
+          echo "MANIFEST=$MANIFEST" >> $GITHUB_ENV
+          echo "CONFIG set to: $CONFIG"
+
+      - name: Install ccache
+        run: sudo apt update && sudo apt install -y ccache
+
+      - name: Set up ccache
+        run: |
+          mkdir -p ~/.ccache ~/.cache/bazel
+          ccache --version
+          ccache --max-size=2G
+          ccache --set-config=compression=true
+          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+
+      - name: Install Repo
+        run: |
+          mkdir -p ./git-repo
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
+          chmod a+rx ./git-repo/repo
+          echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> $GITHUB_ENV
+
+      - name: Clone AnyKernel3 and Other Dependencies
+        run: |
+          echo "Cloning AnyKernel3 and other dependencies..."
+          ANYKERNEL_BRANCH="gki-2.0"
+          SUSFS_BRANCH="gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}"
+          echo "Using branch for AnyKernel3: $ANYKERNEL_BRANCH"
+          echo "Using branch for SUSFS: $SUSFS_BRANCH"
+          git clone https://github.com/TheFloresto/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
+          git clone https://github.com/TheFloresto/kernel_patches.git -b main
+
+      - name: Initialize and Sync Kernel Source
+        run: |
+          echo "Creating folder for configuration: $CONFIG..."
+          mkdir -p "$CONFIG"
+          cd "$CONFIG"
+          echo "Initializing and syncing kernel source..."
+          $REPO init --depth=1 -u https://github.com/OnePlusOSS/kernel_manifest.git -b ${{ env.BRANCH }} -m ${{ env.MANIFEST }} --repo-rev=v2.16
+          $REPO --version
+          $REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast
+
+      - name: Determine the branch for KernelSU
+        run: |
+          case "${{ inputs.kernelsu_branch }}" in
+            "Stable")
+              echo "BRANCH=-" >> $GITHUB_ENV
+              ;;
+            "Dev")
+              if [[ "${{ inputs.kernelsu_variant }}" =~ ^(KSU|MKSU)$ ]]; then
+                echo "BRANCH=-s main" >> $GITHUB_ENV
+              elif [[ "${{ inputs.kernelsu_variant }}" == "NEXT" ]]; then
+                echo "BRANCH=-s next" >> $GITHUB_ENV
+              elif [[ "${{ inputs.kernelsu_variant }}" == "WILD" ]]; then
+                echo "BRANCH=-s wild" >> $GITHUB_ENV
+              fi
+              ;;
+            "Other")
+              if [[ -n "${{ inputs.kernelsu_branch_other }}" ]]; then
+                echo "BRANCH=-s ${{ inputs.kernelsu_branch_other }}" >> $GITHUB_ENV
+              else
+                echo "Error: Custom branch not provided for 'Other'" >&2
+                exit 1
+              fi
+              ;;
+          esac
+
+      - name: Add KernelSU
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG/kernel_platform"
+          case "${{ inputs.kernelsu_variant }}" in
+            "WILD")
+              echo "Adding Wild KSU..."
+              curl -LSs "https://raw.githubusercontent.com/WildKernels/Wild_KSU/wild/kernel/setup.sh" | bash ${{ env.BRANCH }}
+              ;;
+            "KSU")
+              echo "Adding KernelSU Official..."
+              curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash ${{ env.BRANCH }}
+              ;;
+            "NEXT")
+              echo "Adding KernelSU Next..."
+              curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash ${{ env.BRANCH }}
+              ;;
+            "MKSU")
+              echo "Adding KernelSU MKSU..."
+              curl -LSs "https://raw.githubusercontent.com/5ec1cff/KernelSU/main/kernel/setup.sh" | bash ${{ env.BRANCH }}
+              ;;
+          esac
+          git submodule update --init --recursive
+
+      - name: Apply SUSFS Patches
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG/kernel_platform"
+          echo "Applying SUSFS patches..."
+          cp ../../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./common/
+          cp ../../susfs4ksu/kernel_patches/fs/* ./common/fs/
+          cp ../../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+          cd ./common
+          patch -p1 --forward --fuzz=3 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
+          cd ../
+          case "${{ inputs.kernelsu_variant }}" in
+            "WILD")
+              echo "Applying SUSFS patches for Wild KSU..."
+              cd ./Wild_KSU
+              ;;
+            "KSU")
+              echo "Applying SUSFS patches for Official KernelSU..."
+              cd ./KernelSU
+              cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
+              patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || true
+              ;;
+            "NEXT")
+              echo "Applying SUSFS patches for KernelSU Next..."
+              cd ./KernelSU-Next
+              cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
+              patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || true
+              cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_apk_sign.c.patch ./
+              patch -p1 --forward --fuzz=3 < fix_apk_sign.c.patch
+              cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_core_hook.c.patch ./
+              patch -p1 --forward --fuzz=3 < fix_core_hook.c.patch
+              cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_selinux.c.patch ./
+              patch -p1 --forward --fuzz=3 < fix_selinux.c.patch
+              cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_ksud.c.patch ./
+              patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
+              cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_rules.c.patch ./
+              patch -p1 --forward --fuzz=3 < fix_rules.c.patch
+              cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_sucompat.c.patch ./
+              patch -p1 --forward --fuzz=3 < fix_sucompat.c.patch
+              ;;
+            "MKSU")
+              echo "Applying SUSFS patches for MKSU..."
+              cd ./KernelSU
+              ;;
+          esac
+
+      - name: Getting KernelSU Version
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG/kernel_platform"
+          case "${{ inputs.kernelsu_variant }}" in
+            "WILD")
+              cd ./Wild_KSU
+              BASE_VERSION=10200
+              ;;
+            "KSU")
+              cd ./KernelSU
+              BASE_VERSION=10200
+              ;;
+            "NEXT")
+              cd ./KernelSU-Next
+              BASE_VERSION=10200
+              ;;
+            "MKSU")
+              cd ./KernelSU
+              BASE_VERSION=10200
+              ;;
+          esac
+          cd ./kernel
+          KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" $BASE_VERSION)
+          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
+          echo "SUSVER=v1.5.9" >> $GITHUB_ENV
+
+      - name: Apply HMBIRD Patches
+        if: ${{ inputs.model == 'OPAce5Pro' || inputs.model == 'OP13' }}
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG/kernel_platform"
+          echo "Patching hmbird for ${{ inputs.model }}..."
+          echo 'obj-y += hmbird_patch.o' >> ./drivers/Makefile
+          patch -p1 -F 3 < "../../kernel_patches/oneplus/hmbird/hmbird_kernel_patch.patch"
+          cd ./kernel/sched
+          rm -rf ext.c ext.h build_policy.c slim.h slim_sysctl.c
+          patch -p1 -F 3 < "../../../../../kernel_patches/oneplus/hmbird/hmbird_files_patch.patch"
+
+      - name: Apply Hide Stuff Patches
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG/kernel_platform/common"
+          cp ../../kernel_patches/69_hide_stuff.patch ./
+          patch -p1 -F 3 < 69_hide_stuff.patch
+
+      - name: Apply Hooks Patches
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG/kernel_platform/common"
+          if [ "${{ inputs.kernelsu_variant }}" == "NEXT" ]; then
+            echo "Applying hooks for KernelSU-Next..."
+            cp ../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./
+            patch -p1 -F 3 < scope_min_manual_hooks_v1.4.patch
+          elif [ "${{ inputs.kernelsu_variant }}" == "WILD" ]; then
+            echo "Applying hooks for Wild KSU..."
+            cp ../../kernel_patches/wild/syscall_hooks.patch ./
+            patch -p1 -F 3 < syscall_hooks.patch
+          fi
+
+      - name: Add KernelSU and SUSFS Configuration Settings
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG/kernel_platform"
+          echo "Adding configuration settings to gki_defconfig..."
+          echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
+          if [ "${{ inputs.kernelsu_variant }}" == "NEXT" ] || [ "${{ inputs.kernelsu_variant }}" == "WILD" ]; then
+            echo "CONFIG_KSU_KPROBES_HOOK=n" >> ./common/arch/arm64/configs/gki_defconfig
+          fi
+          echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          if [ "${{ inputs.kernelsu_variant }}" == "NEXT" ] || [ "${{ inputs.kernelsu_variant }}" == "WILD" ]; then
+            echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
+          else
+            echo "CONFIG_KSU_SUSFS_SUS_SU=y" >> ./common/arch/arm64/configs/gki_defconfig
+          fi
+          echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_IP_NF_TARGET_TTL=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_IP6_NF_TARGET_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_IP6_NF_MATCH_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_NET_SCH_FQ=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_BIC=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_HTCP=n" >> ./common/arch/arm64/configs/gki_defconfig
+
+      - name: Change Kernel Name
+        run: |
+          cd "$CONFIG/kernel_platform"
+          CURRENT_DATE=$(date -u +"%a %b %d %H:%M:%S UTC %Y")
+          perl -pi -e "s{UTS_VERSION=\"\\\$\\(echo \\\$UTS_VERSION \\\$CONFIG_FLAGS \\\$TIMESTAMP \\| cut -b -\\\$UTS_LEN\\)\"}{UTS_VERSION=\"#1 SMP PREEMPT $CURRENT_DATE\"}" ./common/scripts/mkcompile_h
+          sed -i '$s|echo "\$res"|echo "\$res-@NoFloresto+@mr_vokintos"|' ./common/scripts/setlocalversion
+          sed -i 's/-dirty//' ./common/scripts/setlocalversion
+          sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl || echo "No stamp.bzl!"
+          sed -E -i "/^CONFIG_LOCALVERSION=/ s/(.*)\"/\\1-@NoFloresto+@mr_vokintos\"/" ./common/arch/arm64/configs/gki_defconfig
+
+      - name: Build the Kernel
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG"
+          echo "Building the kernel..."
+          sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'
+          rm ./kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
+          rm ./kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
+          BUILD_TYPE="gki"
+          BAZEL_ARGS=(--jobs=$(nproc --all) --lto=thin)
+          if [ "${{ env.SOC }}" == "sun" ]; then
+            BUILD_TYPE="perf"
+            BAZEL_ARGS+=(-g)
+          fi
+          if [ -f ./kernel_platform/build_with_bazel.py ]; then
+            ./kernel_platform/oplus/bazel/oplus_modules_variant.sh ${{ env.SOC }} "$BUILD_TYPE" ""
+            ./kernel_platform/build_with_bazel.py -t ${{ env.SOC }} $BUILD_TYPE "${BAZEL_ARGS[@]}" -o "$(pwd)/out"
+          else
+            LTO=thin ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ env.SOC }} "$BUILD_TYPE"
+          fi
+          ccache --show-stats
+
+      - name: Create Boot Images
+        run: |
+          mkdir bootimgs
+          echo "Copying kernel images..."
+          if [ "${{ env.ANDROID_VERSION }}" == "android12" ] || [ "${{ env.ANDROID_VERSION }}" == "android13" ]; then
+            cp ./$CONFIG/out/${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}/dist/Image ./bootimgs/Image
+          else
+            cp ./$CONFIG/bazel-bin/common/kernel_aarch64/Image ./bootimgs/Image
+          fi
+
+      - name: Create ZIP File
+        run: |
+          echo "Creating zip file..."
+          cd "$CONFIG"
+          cp ./bootimgs/Image ../AnyKernel3/Image
+          cd ../AnyKernel3
+          if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13" ]; then
+            cp ../kernel_patches/oneplus/hmbird/bins/* ./tools/
+            patch -F 3 < ../kernel_patches/oneplus/hmbird/ak3_hmbird_patch.patch
+          fi
+          ZIP_NAME="${{ inputs.kernelsu_variant }}-${{ env.KSUVER }}-${{ inputs.model }}-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.zip"
+          echo "Creating zip file: $ZIP_NAME..."
+          zip -r "../$ZIP_NAME" ./*
+          
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.kernelsu_variant }}-kernel-${{ inputs.model }}
+          path: |
+            *.zip
+            bootimgs/Image
