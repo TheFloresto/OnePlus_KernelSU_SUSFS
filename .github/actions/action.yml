@@ -81,21 +81,12 @@ runs:
         # Set CONFIG Environment Variable
         echo "CONFIG=${{ inputs.model }}" >> $GITHUB_ENV
 
-      - name: Setup SWAP
-        run: |
-          sudo swapoff -a
-          sudo fallocate -l 20G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
-          free -h
-
     - name: Set up ccache
       shell: bash
       run: |
         mkdir -p ~/.ccache ~/.cache/bazel
         ccache --version
-        ccache --max-size=2G
+        ccache --max-size=5G
         ccache --set-config=compression=true
         ccache --set-config=compression_level=1
         echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
@@ -209,7 +200,7 @@ runs:
             patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
             ;;
           "v1.5.9")
-            cp -v ../../../kernel_patches/next/0001-Susfs-1.5.9.patch ./
+            cp -v ../../kernel_patches/next/0001-Susfs-1.5.9.patch ./
             patch -p1 --forward --fuzz=3 < 0001-Susfs-1.5.9.patch
             ;;
           *)
@@ -274,7 +265,6 @@ runs:
         # Apply additional patch
         cp ../../../kernel_patches/69_hide_stuff.patch ./
         patch -p1 -F 3 < 69_hide_stuff.patch
-
     - name: Add KernelSU-Next and SUSFS Configuration Settings
       shell: bash
       run: |
