@@ -85,7 +85,7 @@ runs:
       shell: bash
       run: |
         sudo swapoff -a
-        sudo fallocate -l 20G /swapfile
+        sudo fallocate -l 35G /swapfile
         sudo chmod 600 /swapfile
         sudo mkswap /swapfile
         sudo swapon /swapfile
