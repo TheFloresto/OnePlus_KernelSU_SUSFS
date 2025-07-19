@@ -117,9 +117,9 @@ runs:
         echo "Using branch for AnyKernel3: $ANYKERNEL_BRANCH"
         echo "Using branch for SUSFS: $SUSFS_BRANCH"
         
-        # Clone repositories using the branch names
+        # Clone repositories using your repo
         git clone https://github.com/TheWildJames/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
-        git clone https://github.com/TheWildJames/kernel_patches.git
+        git clone https://github.com/TheFloresto/kernel_patches.git
         
         # Clone the repo with all branches and history (can optimize later if needed)
         git clone https://gitlab.com/simonpunk/susfs4ksu.git
@@ -210,20 +210,8 @@ runs:
             patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
             ;;
           "v1.5.9")
-            cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-            patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch  || true
-            cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_apk_sign.c.patch" ./
-            patch -p1 --forward --fuzz=3 < fix_apk_sign.c.patch
-            cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_core_hook.c.patch" ./
-            patch -p1 --forward --fuzz=3 < fix_core_hook.c.patch
-            cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_selinux.c.patch" ./
-            patch -p1 --forward --fuzz=3 < fix_selinux.c.patch
-            cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_ksud.c.patch" ./
-            patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
-            cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_rules.c.patch" ./
-            patch -p1 --forward --fuzz=3 < fix_rules.c.patch
-            cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_sucompat.c.patch" ./
-            patch -p1 --forward --fuzz=3 < fix_sucompat.c.patch
+            cp -v ../../kernel_patches/next/0001-Susfs-1.5.9.patch ./
+            patch -p1 --forward --fuzz=3 < 0001-Susfs-1.5.9.patch
             ;;
           *)
             echo "Invalid version: $susfs_version"
