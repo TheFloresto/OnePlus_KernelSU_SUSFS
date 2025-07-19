@@ -186,6 +186,7 @@ runs:
           case "$susfs_version" in
             "v1.5.5"|"v1.5.6"|"v1.5.7")
               cp "../../../kernel_patches/next/0001-kernel-implement-susfs-v1.5.5-v1.5.7-KSUN-v1.0.8.patch" "./ksun_susfs_latest.patch"
+              patch -p1 --forward < ksun_susfs_latest.patch || true
               ;;
             "v1.5.8")
               cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
@@ -208,15 +209,13 @@ runs:
               exit 1
               ;;
           esac
-          patch -p1 --forward < ksun_susfs_latest.patch || true
-          
           
           # Change to common directory and apply SUSFS patch
           cd ../common
           
           # SusFS Experimental Patches
           echo "Patching susfs_dentry_null_checks!"
-          patch -p1 -F 3 < "../../../kernel_patches/experimental/susfs/susfs_dentry_checks.patch"
+          patch -p1 -F 3 < "../../../kernel_patches/experimental/susfs/susfs_dentry_checks.patch" || true
           
           if [ "${{ inputs.android_version }}" = "android15" ] && [ "${{ inputs.kernel_version }}" = "6.6" ]; then
               if ! grep -qxF '#include <trace/hooks/fs.h>' ./fs/namespace.c; then
