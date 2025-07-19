@@ -32,64 +32,63 @@ inputs:
     default: ""
 
 runs:
-    using: "composite"
-    steps:
-      - name: Setup Build System
-        shell: bash
-        run: |
-          export DEBIAN_FRONTEND=noninteractive
-          echo "DEBIAN_FRONTEND=noninteractive" >> $GITHUB_ENV
-          
-          df -h
-          
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/powershell /usr/share/swift || true
-          sudo docker image prune --all --force
-          echo "some directories deleted"
-          
-          # Remove large unwanted packages
-          sudo apt-get purge -y \
-            aria2 ansible azure-cli shellcheck rpm xorriso zsync \
-            esl-erlang firefox gfortran-8 gfortran-9 google-chrome-stable \
-            google-cloud-sdk imagemagick \
-            libmagickcore-dev libmagickwand-dev libmagic-dev ant ant-optional kubectl \
-            mercurial apt-transport-https mono-complete libmysqlclient \
-            unixodbc-dev yarn chrpath libssl-dev libxft-dev \
-            libfreetype6 libfreetype6-dev libfontconfig1 libfontconfig1-dev \
-            snmp pollinate libpq-dev postgresql-client powershell ruby-full \
-            sphinxsearch subversion mongodb-org microsoft-edge-stable || true
-          
-          # Regex-based purges (for bulk families like mysql, php, dotnet)
-          sudo apt-get purge -y $(dpkg-query -W -f='${binary:Package}\n' | grep -E '^mysql|^php|^dotnet') || true
-          
-          # Clean up
-          sudo apt-get autoremove -y
-          sudo apt-get autoclean -y
-          echo "some packages purged"
-          
-          df -h
-          
-          # Install dependencies
-          echo "Installing Repo and Python"
-          sudo apt update
-          sudo apt install -y python3 python-is-python3
-          
-          mkdir -p ./git-repo
-          curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
-          chmod a+rx ./git-repo/repo
-          echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> $GITHUB_ENV
-          
-          # Set CONFIG Environment Variable
-          echo "CONFIG=${{ inputs.model }}" >> $GITHUB_ENV
-
-    - name: Setup SWAP
+  using: "composite"
+  steps:
+    - name: Setup Build System
       shell: bash
       run: |
-        sudo swapoff -a
-        sudo fallocate -l 20G /swapfile
-        sudo chmod 600 /swapfile
-        sudo mkswap /swapfile
-        sudo swapon /swapfile
-        free -h
+        export DEBIAN_FRONTEND=noninteractive
+        echo "DEBIAN_FRONTEND=noninteractive" >> $GITHUB_ENV
+        
+        df -h
+        
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/powershell /usr/share/swift || true
+        sudo docker image prune --all --force
+        echo "some directories deleted"
+        
+        # Remove large unwanted packages
+        sudo apt-get purge -y \
+          aria2 ansible azure-cli shellcheck rpm xorriso zsync \
+          esl-erlang firefox gfortran-8 gfortran-9 google-chrome-stable \
+          google-cloud-sdk imagemagick \
+          libmagickcore-dev libmagickwand-dev libmagic-dev ant ant-optional kubectl \
+          mercurial apt-transport-https mono-complete libmysqlclient \
+          unixodbc-dev yarn chrpath libssl-dev libxft-dev \
+          libfreetype6 libfreetype6-dev libfontconfig1 libfontconfig1-dev \
+          snmp pollinate libpq-dev postgresql-client powershell ruby-full \
+          sphinxsearch subversion mongodb-org microsoft-edge-stable || true
+        
+        # Regex-based purges (for bulk families like mysql, php, dotnet)
+        sudo apt-get purge -y $(dpkg-query -W -f='${binary:Package}\n' | grep -E '^mysql|^php|^dotnet') || true
+        
+        # Clean up
+        sudo apt-get autoremove -y
+        sudo apt-get autoclean -y
+        echo "some packages purged"
+        
+        df -h
+        
+        # Install dependencies
+        echo "Installing Repo and Python"
+        sudo apt update
+        sudo apt install -y python3 python-is-python3 ccache
+        
+        mkdir -p ./git-repo
+        curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
+        chmod a+rx ./git-repo/repo
+        echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> $GITHUB_ENV
+        
+        # Set CONFIG Environment Variable
+        echo "CONFIG=${{ inputs.model }}" >> $GITHUB_ENV
+
+      - name: Setup SWAP
+        run: |
+          sudo swapoff -a
+          sudo fallocate -l 20G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
 
     - name: Set up ccache
       shell: bash
@@ -174,9 +173,9 @@ runs:
         echo "Applying SUSFS patches..."
         
         # Copy SUSFS patches
-        cp -v ../../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/
-        cp -v ../../susfs4ksu/kernel_patches/fs/* ./common/fs/
-        cp -v ../../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+        cp ../../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/
+        cp ../../susfs4ksu/kernel_patches/fs/* ./common/fs/
+        cp ../../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
         
         cd ./KernelSU-Next
         
@@ -264,7 +263,7 @@ runs:
         echo "Changing to configuration directory: $CONFIG..."
         cd "$CONFIG/kernel_platform/common"
         echo "Applying KSUN Hooks..."
-        cp -v ../../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./manual_hooks.patch
+        cp ../../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./manual_hooks.patch
         patch -p1 --fuzz=3 < ./manual_hooks.patch
         
     - name: Apply Hide Stuff Patches
@@ -273,7 +272,7 @@ runs:
         echo "Changing to configuration directory: $CONFIG..."
         cd "$CONFIG/kernel_platform/common"
         # Apply additional patch
-        cp -v ../../../kernel_patches/69_hide_stuff.patch ./
+        cp ../../../kernel_patches/69_hide_stuff.patch ./
         patch -p1 -F 3 < 69_hide_stuff.patch
 
     - name: Add KernelSU-Next and SUSFS Configuration Settings
@@ -289,25 +288,26 @@ runs:
         echo "CONFIG_KSU_KPROBES_HOOK=n" >> ./common/arch/arm64/configs/gki_defconfig
         
         # Add SUSFS configuration settings
-        echo "CONFIG_KSU_SUSFS=y" | tee -a ./common/arch/arm64/configs/gki_defconfig
-        echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" | tee -a ./common/arch/arm64/configs/gki_defconfig
-        echo "CONFIG_KSU_SUSFS_SUS_PATH=y" | tee -a ./common/arch/arm64/configs/gki_defconfig
-        echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" | tee -a ./common/arch/arm64/configs/gki_defconfig
-        echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" | tee -a ./common/arch/arm64/configs/gki_defconfig
-        echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" | tee -a ./common/arch/arm64/configs/gki_defconfig
-        echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" | tee -a ./common/arch/arm64/configs/gki_defconfig
-        echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" | tee -a ./common/arch/arm64/configs/gki_defconfig
-        echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" | tee -a ./common/arch/arm64/configs/gki_defconfig
-        echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" | tee -a ./common/arch/arm64/configs/gki_defconfig
-        echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" | tee -a ./common/arch/arm64/configs/gki_defconfig
-        echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" | tee -a ./common/arch/arm64/configs/gki_defconfig
-        echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" | tee -a ./common/arch/arm64/configs/gki_defconfig
-        echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" | tee -a ./common/arch/arm64/configs/gki_defconfig
-        echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" | tee -a ./common/arch/arm64/configs/gki_defconfig
-        echo "CONFIG_KSU_SUSFS_SUS_SU=n" | tee -a ./common/arch/arm64/configs/gki_defconfig        
+        echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
+        
         # Add additional tmpfs config setting
-        echo "CONFIG_TMPFS_XATTR=y" | tee -a ./common/arch/arm64/configs/gki_defconfig
-        echo "CONFIG_TMPFS_POSIX_ACL=y" | tee -a ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
 
     - name: Add BBR Support
       shell: bash
@@ -316,14 +316,14 @@ runs:
         cd "$CONFIG/kernel_platform"
         
         echo "Adding configuration settings to gki_defconfig..."
-        echo "CONFIG_TCP_CONG_ADVANCED=y" | tee -a ./common/arch/arm64/configs/gki_defconfig 
-        echo "CONFIG_TCP_CONG_BBR=y" | tee -a ./common/arch/arm64/configs/gki_defconfig
-        echo "CONFIG_TCP_CONG_BIC=n" | tee -a ./common/arch/arm64/configs/gki_defconfig
-        echo "CONFIG_TCP_CONG_WESTWOOD=n" | tee -a ./common/arch/arm64/configs/gki_defconfig
-        echo "CONFIG_TCP_CONG_HTCP=n" | tee -a ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_TCP_CONG_BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_TCP_CONG_BIC=n" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_TCP_CONG_HTCP=n" >> ./common/arch/arm64/configs/gki_defconfig
         
-        echo "CONFIG_NET_SCH_FQ=y" | tee -a ./common/arch/arm64/configs/gki_defconfig
-        echo "CONFIG_NET_SCH_FQ_CODEL=y" | tee -a ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_NET_SCH_FQ=y" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_NET_SCH_FQ_CODEL=y" >> ./common/arch/arm64/configs/gki_defconfig
 
     - name: Add TTL Target Support
       shell: bash
@@ -332,9 +332,9 @@ runs:
         cd "$CONFIG/kernel_platform"
         
         echo "Adding configuration settings to gki_defconfig..."
-        echo "CONFIG_IP_NF_TARGET_TTL=y" | tee -a ./common/arch/arm64/configs/gki_defconfig
-        echo "CONFIG_IP6_NF_TARGET_HL=y" | tee -a ./common/arch/arm64/configs/gki_defconfig
-        echo "CONFIG_IP6_NF_MATCH_HL=y" | tee -a ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_IP_NF_TARGET_TTL=y" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_IP6_NF_TARGET_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
+        echo "CONFIG_IP6_NF_MATCH_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
 
     - name: Run sed and perl Commands
       shell: bash
