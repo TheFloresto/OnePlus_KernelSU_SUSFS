@@ -85,7 +85,7 @@ runs:
       shell: bash
       run: |
         sudo swapoff -a
-        sudo fallocate -l 35G /swapfile
+        sudo fallocate -l 17G /swapfile
         sudo chmod 600 /swapfile
         sudo mkswap /swapfile
         sudo swapon /swapfile
@@ -96,7 +96,7 @@ runs:
       run: |
         mkdir -p ~/.ccache ~/.cache/bazel
         ccache --version
-        ccache --max-size=5G
+        ccache --max-size=2G
         ccache --set-config=compression=true
         ccache --set-config=compression_level=1
         echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
