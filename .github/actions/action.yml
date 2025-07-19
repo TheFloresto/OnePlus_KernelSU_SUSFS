@@ -81,6 +81,16 @@ runs:
         # Set CONFIG Environment Variable
         echo "CONFIG=${{ inputs.model }}" >> $GITHUB_ENV
 
+    - name: Setup SWAP
+      shell: bash
+      run: |
+        sudo swapoff -a
+        sudo fallocate -l 20G /swapfile
+        sudo chmod 600 /swapfile
+        sudo mkswap /swapfile
+        sudo swapon /swapfile
+        free -h
+
     - name: Set up ccache
       shell: bash
       run: |
