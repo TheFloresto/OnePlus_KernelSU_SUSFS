@@ -82,6 +82,27 @@ runs:
           # Set CONFIG Environment Variable
           echo "CONFIG=${{ inputs.model }}" >> $GITHUB_ENV
 
+      - name: Setup SWAP
+        run: |
+         sudo swapoff -a
+         sudo fallocate -l 20G /swapfile
+         sudo chmod 600 /swapfile
+         sudo mkswap /swapfile
+         sudo swapon -p 1 /swapfile
+         echo 'vm.swappiness=1' | sudo tee -a /etc/sysctl.conf
+         echo 'vm.vfs_cache_pressure=50' | sudo tee -a /etc/sysctl.conf
+         echo 'vm.overcommit_memory=1' | sudo tee -a /etc/sysctl.conf
+         sudo sysctl -p
+         free -h
+
+      - name: Set up ccache
+        run: |
+          mkdir -p ~/.ccache ~/.cache/bazel
+          ccache --version
+          ccache --max-size=4G
+          ccache --set-config=compression=true
+          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+
       - name: Clone AnyKernel3 and Other Dependencies
         shell: bash
         run: |
@@ -99,7 +120,7 @@ runs:
           echo "Using branch for SUSFS: $SUSFS_BRANCH"
           
           # Clone repositories using the branch names
-          git clone https://github.com/TheWildJames/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
+          git clone https://github.com/TheFloresto/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
           git clone https://github.com/TheWildJames/kernel_patches.git
           
           # Clone the repo with all branches and history (can optimize later if needed)
@@ -178,7 +199,7 @@ runs:
               cp "../../../kernel_patches/next/0001-kernel-implement-susfs-v1.5.5-v1.5.7-KSUN-v1.0.8.patch" "./ksun_susfs_latest.patch"
               ;;
             "v1.5.8")
-              cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
+              cp  ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
               patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch  || true
               cp "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_apk_sign.c.patch" ./
               patch -p1 --forward --fuzz=3 < fix_apk_sign.c.patch
@@ -190,7 +211,7 @@ runs:
               patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
               ;;
             "v1.5.9")
-              cp ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
+              cp -v ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
               patch -p1 --forward < 10_enable_susfs_for_ksu.patch  || true
               
               for file in $(find ./kernel -maxdepth 2 -name "*.rej" -printf "%f\n" | cut -d'.' -f1); do
@@ -249,7 +270,7 @@ runs:
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG/kernel_platform/common"
           echo "Applying KSUN Hooks..."
-          cp ../../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./manual_hooks.patch
+          cp -v../../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./manual_hooks.patch
           patch -p1 < ./manual_hooks.patch
           
       - name: Apply Hide Stuff Patches
@@ -258,7 +279,7 @@ runs:
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG/kernel_platform/common"
           # Apply additional patch
-          cp ../../../kernel_patches/69_hide_stuff.patch ./
+          cp -v ../../../kernel_patches/69_hide_stuff.patch ./
           patch -p1 -F 3 < 69_hide_stuff.patch
 
       - name: Add KernelSU-Next and SUSFS Configuration Settings
@@ -330,9 +351,11 @@ runs:
           
           echo "Running sed commands..."
           
-          sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' "./common/arch/arm64/configs/gki_defconfig"
-          sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
-          sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "./common/arch/arm64/configs/gki_defconfig"
+         sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' "./common/arch/arm64/configs/gki_defconfig"
+         sed -i 's/CONFIG_LTO_CLANG_THIN=y/CONFIG_LTO_CLANG_FULL=		y/' "./common/arch/arm64/configs/gki_defconfig"
+         sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_FULL=y/' "./common/arch/arm64/configs/gki_defconfig"
+
+         echo "CONFIG_LTO_CLANG_FULL=y" >> ./common/arch/arm64/configs/gki_defconfig
           
           # Run sed commands for modifications
           sed -i 's/check_defconfig//' ./common/build.config.gki
@@ -353,7 +376,7 @@ runs:
           sed -i 's/-dirty//' ./external/dtc/scripts/setlocalversion
           sed -i 's/-dirty//' ./build/kernel/kleaf/workspace_status_stamp.py || echo "No workspace_status_stamp.py!"
           
-          sed -i '/echo "LTO $LTO "/i export LTO=thin' ./oplus/build/oplus_setup.sh
+         sed -i '/echo "LTO $LTO "/i export LTO=full' ./oplus/build/oplus_setup.sh
           sed -i 's/export REPACK_IMG=true/export REPACK_IMG=false/g' ./oplus/build/oplus_setup.sh
          
           # Run perl command to modify UTS_VERSION
@@ -375,11 +398,16 @@ runs:
           rm ./kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
           
           BUILD_TYPE="gki"
-          BAZEL_ARGS=(--jobs=$(nproc --all) --lto=thin)
-          if [ "${{ inputs.soc }}" == "sun" ]; then
-            BUILD_TYPE="perf"
-            BAZEL_ARGS+=(-g)
-          fi
+         BAZEL_ARGS=(
+          --sandbox_writable_path=/home/runner/.ccache
+          --disk_cache=~/.cache/bazel
+          --jobs=$(nproc --all)
+          --lto=full
+         )
+         if [ "${{ inputs.soc }}" == "sun" ]; then
+          BUILD_TYPE="perf"
+          BAZEL_ARGS+=(-g)
+         fi
           
           (stdbuf -oL bash -c '
             while true; do
@@ -400,7 +428,7 @@ runs:
             ./kernel_platform/oplus/bazel/oplus_modules_variant.sh ${{ inputs.soc }} "$BUILD_TYPE" ""
             ./kernel_platform/build_with_bazel.py -t ${{ inputs.soc }} $BUILD_TYPE "${BAZEL_ARGS[@]}" -o "$(pwd)/out"
           else
-            LTO=thin ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ inputs.soc }} "$BUILD_TYPE"
+           LTO=full ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ inputs.soc }} "$BUILD_TYPE"
           fi
 
       - name: Create ZIP Files for Different Formats
