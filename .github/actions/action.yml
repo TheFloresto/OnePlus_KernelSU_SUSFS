@@ -69,9 +69,9 @@ runs:
         df -h
         
         # Install dependencies
-        echo "Installing Repo and Python"
+        echo "Installing Repo, Python, and build tools"
         sudo apt update
-        sudo apt install -y python3 python-is-python3
+        sudo apt install -y python3 python-is-python3 ccache build-essential
         
         mkdir -p ./git-repo
         curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
