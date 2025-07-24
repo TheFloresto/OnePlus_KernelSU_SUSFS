@@ -87,13 +87,16 @@ runs:
       shell: bash
       run: |
         sudo swapoff -a
-        sudo fallocate -l 20G /swapfile
+        # Increase swap size to 40GB for LTO builds
+        sudo fallocate -l 40G /swapfile
         sudo chmod 600 /swapfile
         sudo mkswap /swapfile
         sudo swapon -p 1 /swapfile
-        echo 'vm.swappiness=1' | sudo tee -a /etc/sysctl.conf
+        echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
         echo 'vm.vfs_cache_pressure=50' | sudo tee -a /etc/sysctl.conf
         echo 'vm.overcommit_memory=1' | sudo tee -a /etc/sysctl.conf
+        # Increase memory overcommit ratio for LTO
+        echo 'vm.overcommit_ratio=200' | sudo tee -a /etc/sysctl.conf
         sudo sysctl -p
         free -h
 
