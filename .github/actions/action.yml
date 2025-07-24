@@ -71,7 +71,9 @@ runs:
         # Install dependencies
         echo "Installing Repo, Python, and build tools"
         sudo apt update
-        sudo apt install -y python3 python-is-python3 ccache build-essential
+        sudo apt install -y python3 python-is-python3 ccache build-essential \
+          git curl wget zip unzip bc bison flex libssl-dev libelf-dev \
+          lld clang
         
         mkdir -p ./git-repo
         curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
@@ -122,7 +124,7 @@ runs:
         
         # Clone repositories using the branch names
         git clone https://github.com/TheFloresto/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
-        git clone https://github.com/TheWildJames/kernel_patches.git
+        git clone https://github.com/TheFloresto/kernel_patches.git
         
         # Clone the repo with all branches and history (can optimize later if needed)
         git clone https://gitlab.com/simonpunk/susfs4ksu.git
@@ -212,23 +214,22 @@ runs:
             patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
             ;;
           "v1.5.9")
-            cp -v ../../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-            patch -p1 --forward < 10_enable_susfs_for_ksu.patch  || true
-            
-            for file in $(find ./kernel -maxdepth 2 -name "*.rej" -printf "%f\n" | cut -d'.' -f1); do
-                echo "Patching file: $file.c with fix_$file.c.patch"
-                patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_$file.c.patch"
-            done
-            
-            # Fix build errors (no rejects; Still giving errors)
-            patch -p1 --forward < "../../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_kernel_compat.c.patch"
+            # Use the specific patch for SUSFS v1.5.9
+            cp "../../../kernel_patches/next/0001-Susfs-1.5.9.patch" "./0001-Susfs-1.5.9.patch"
+            patch -p1 --forward < 0001-Susfs-1.5.9.patch || true
             ;;
           *)
             echo "Invalid version: $susfs_version"
             exit 1
             ;;
         esac
-        patch -p1 --forward < ksun_susfs_latest.patch || true
+        
+        # Apply the main SUSFS patch if it exists
+        if [ -f "ksun_susfs_latest.patch" ]; then
+            patch -p1 --forward < ksun_susfs_latest.patch || true
+        elif [ -f "0001-Susfs-1.5.9.patch" ]; then
+            echo "SUSFS v1.5.9 patch already applied"
+        fi
         
         
         # Change to common directory and apply SUSFS patch
@@ -271,7 +272,7 @@ runs:
         echo "Changing to configuration directory: $CONFIG..."
         cd "$CONFIG/kernel_platform/common"
         echo "Applying KSUN Hooks..."
-        cp -v ../../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./manual_hooks.patch
+        cp -v ../../../kernel_patches/next/60_scope-minimized_manual_hooks.patch ./manual_hooks.patch
         patch -p1 < ./manual_hooks.patch
 
     - name: Apply Hide Stuff Patches
@@ -460,4 +461,3 @@ runs:
         name: kernel-${{ env.CONFIG }}
         path: |
           *.zip
-          
