@@ -87,7 +87,7 @@ runs:
           echo "Error: Not enough disk space for 20 GB swap file. Available: $AVAILABLE_SPACE MB"
           exit 1
         fi
-        sudo fallocate -l 20G /swapfile
+        sudo fallocate -l 22G /swapfile
         sudo chmod 600 /swapfile
         sudo mkswap /swapfile
         sudo swapon -p 1 /swapfile
